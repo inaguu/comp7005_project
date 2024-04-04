@@ -10,8 +10,28 @@ import (
 	"time"
 )
 
+var (
+	addr       *net.UDPAddr
+	connection *net.UDPConn
+)
+
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
+}
+
+func initServer(port string) {
+	PORT := ":" + port
+	addr, err := net.ResolveUDPAddr("udp4", PORT)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	connection, err = net.ListenUDP("udp", addr)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 }
 
 func main() {
