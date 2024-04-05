@@ -10,7 +10,13 @@ import (
 	"time"
 )
 
+const (
+	INPUT_ERROR = "Usage: <filename> -i <ip address> -p <port_number>"
+)
+
 var (
+	IP         string
+	port       string
 	addr       *net.UDPAddr
 	connection *net.UDPConn
 )
@@ -34,25 +40,38 @@ func initServer(port string) {
 	}
 }
 
+func parseArgs(args []string) {
+	if len(args) == 1 {
+		fmt.Println(INPUT_ERROR)
+		return
+	}
+	fmt.Println(args)
+}
+
 func main() {
+
+	parseArgs(os.Args)
+
 	arguments := os.Args
 	if len(arguments) == 1 {
 		fmt.Println("Please provide a port number!")
 		return
 	}
-	PORT := ":" + arguments[1]
+	// PORT := ":" + arguments[1]
 
-	s, err := net.ResolveUDPAddr("udp4", PORT)
+	s, err := net.ResolveUDPAddr("udp4", "127.0.0.1:1234")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	fmt.Println(s)
 
 	connection, err := net.ListenUDP("udp4", s)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	fmt.Println(connection)
 
 	defer connection.Close()
 	buffer := make([]byte, 1024)
