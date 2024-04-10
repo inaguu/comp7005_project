@@ -63,13 +63,20 @@ func send(ctx context.Context, t *fsm.Transition) {
 	}
 
 	_, err := clientCtx.Socket.Write([]byte(clientCtx.Data))
-
 	if err != nil {
 		fmt.Println(err)
 		t.Fsm.Transition(ctx, "cleanup")
 	}
-
+	fmt.Println("sent", clientCtx.Data)
 	t.Fsm.Transition(ctx, "receive")
+}
+
+func waitForSynAck(ctx context.Context, t *fsm.Transition) {
+	t.Fsm.Transition(ctx, "send")
+}
+
+func sendSyn(ctx context.Context, t *fsm.Transition) {
+	t.Fsm.Transition(ctx, "wait_for_syn_ack")
 }
 
 func readFile(ctx context.Context, t *fsm.Transition) {
@@ -88,7 +95,7 @@ func readFile(ctx context.Context, t *fsm.Transition) {
 	}
 
 	clientCtx.Data = string(content)
-	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "send")
+	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "send_syn")
 }
 
 func bindSocket(ctx context.Context, t *fsm.Transition) {
@@ -128,7 +135,9 @@ func main() {
 			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
 			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
 			{Name: "read_file", From: []string{"bind_socket"}, To: "read_file"},
-			{Name: "send", From: []string{"read_file"}, To: "send"},
+			{Name: "send_syn", From: []string{"read_file"}, To: "send_syn"},
+			{Name: "wait_for_syn_ack", From: []string{"send_syn"}, To: "wait_for_syn_ack"},
+			{Name: "send", From: []string{"wait_for_syn_ack"}, To: "send"},
 			{Name: "receive", From: []string{"send"}, To: "receive"},
 			{Name: "cleanup", From: []string{"bind_socket", "user_input", "send", "receive"}, To: "cleanup"},
 			{Name: "exit", From: []string{"*"}, To: "end"},
@@ -136,11 +145,13 @@ func main() {
 		[]fsm.Actions{
 			{To: "parse_args", Callback: parseArgs},
 			{To: "bind_socket", Callback: bindSocket},
+			{To: "read_file", Callback: readFile},
+			{To: "send_syn", Callback: sendSyn},
+			{To: "wait_for_syn_ack", Callback: waitForSynAck},
 			{To: "send", Callback: send},
 			{To: "receive", Callback: receive},
 			{To: "cleanup", Callback: cleanup},
 			{To: "exit", Callback: exit},
-			{To: "read_file", Callback: readFile},
 		})
 
 	fsm.Transition(context.Background(), "parse_args")
