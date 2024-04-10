@@ -1,6 +1,8 @@
 package main
 
 import (
+	"comp7005_project/fsm"
+	"context"
 	"fmt"
 	"math/rand"
 	"net"
@@ -10,8 +12,17 @@ import (
 	"time"
 )
 
+type Key int
+
+type ServerCtx struct {
+	Socket        *net.UDPConn
+	ClientAddress *net.UDPAddr
+	Ip, Port      string
+}
+
 const (
-	INPUT_ERROR = "Usage: <filename> -i <ip address> -p <port_number>"
+	INPUT_ERROR     = "Usage: <filename> -i <ip address> -p <port_number>"
+	ServerKey   Key = 0
 )
 
 var (
@@ -40,58 +51,119 @@ func initServer(port string) {
 	}
 }
 
-func parseArgs(args []string) {
-	if len(args) == 1 {
-		fmt.Println(INPUT_ERROR)
-		return
-	}
-	fmt.Println(args)
+func exit(ctx context.Context, t *fsm.Transition) {
+	fmt.Println("Exiting...")
+	os.Exit(0)
 }
 
-func main() {
-
-	parseArgs(os.Args)
-
-	arguments := os.Args
-	if len(arguments) == 1 {
-		fmt.Println("Please provide a port number!")
-		return
+func cleanup(ctx context.Context, t *fsm.Transition) {
+	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "exit")
 	}
-	// PORT := ":" + arguments[1]
 
-	s, err := net.ResolveUDPAddr("udp4", "127.0.0.1:1234")
+	if serverCtx.Socket != nil {
+		serverCtx.Socket.Close()
+	}
+}
+
+func send(ctx context.Context, t *fsm.Transition) {
+	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+	fmt.Println(serverCtx.Socket, serverCtx.ClientAddress)
+
+	rand.Seed(time.Now().Unix())
+
+	data := []byte(strconv.Itoa(random(1, 1001)))
+	fmt.Printf("data: %s\n", string(data))
+
+	_, err := serverCtx.Socket.WriteToUDP(data, serverCtx.ClientAddress)
 	if err != nil {
 		fmt.Println(err)
-		return
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	t.Fsm.Transition(ctx, "receive")
+}
+
+func receive(ctx context.Context, t *fsm.Transition) {
+	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	buffer := make([]byte, 1024)
+
+	n, addr, err := serverCtx.Socket.ReadFromUDP(buffer)
+
+	fmt.Print("-> ", string(buffer[0:n-1]))
+
+	if strings.TrimSpace(string(buffer[0:n])) == "STOP" || err != nil {
+		fmt.Println("Exiting UDP server!")
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+	serverCtx.ClientAddress = addr
+
+	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "send")
+}
+
+func bindSocket(ctx context.Context, t *fsm.Transition) {
+	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", serverCtx.Ip, serverCtx.Port))
+	if err != nil {
+		fmt.Println(err)
+		t.Fsm.Transition(ctx, "exit")
 	}
 	fmt.Println(s)
 
 	connection, err := net.ListenUDP("udp4", s)
 	if err != nil {
 		fmt.Println(err)
-		return
+		t.Fsm.Transition(ctx, "exit")
 	}
 	fmt.Println(connection)
 
-	defer connection.Close()
-	buffer := make([]byte, 1024)
-	rand.Seed(time.Now().Unix())
+	serverCtx.Socket = connection
 
-	for {
-		n, addr, err := connection.ReadFromUDP(buffer)
-		fmt.Print("-> ", string(buffer[0:n-1]))
+	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "receive")
+}
 
-		if strings.TrimSpace(string(buffer[0:n])) == "STOP" {
-			fmt.Println("Exiting UDP server!")
-			return
-		}
-
-		data := []byte(strconv.Itoa(random(1, 1001)))
-		fmt.Printf("data: %s\n", string(data))
-		_, err = connection.WriteToUDP(data, addr)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
+func parseArgs(ctx context.Context, t *fsm.Transition) {
+	if len(os.Args) < 3 {
+		fmt.Println(INPUT_ERROR)
+		t.Fsm.Transition(ctx, "exit")
 	}
+
+	serverCtx := ServerCtx{Ip: os.Args[1], Port: os.Args[2]}
+
+	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "bind_socket")
+}
+
+func main() {
+	fsm := fsm.Build(
+		"start",
+		[]fsm.Transitions{
+			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
+			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
+			{Name: "receive", From: []string{"bind_socket", "send"}, To: "receive"},
+			{Name: "send", From: []string{"receive"}, To: "send"},
+			{Name: "cleanup", From: []string{"bind_socket", "receive", "send"}, To: "cleanup"},
+			{Name: "exit", From: []string{"*"}, To: "end"},
+		},
+		[]fsm.Actions{
+			{To: "parse_args", Callback: parseArgs},
+			{To: "bind_socket", Callback: bindSocket},
+			{To: "receive", Callback: receive},
+			{To: "send", Callback: send},
+			{To: "cleanup", Callback: cleanup},
+			{To: "exit", Callback: exit},
+		})
+
+	fsm.Transition(context.Background(), "parse_args")
 }
