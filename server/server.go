@@ -24,30 +24,8 @@ const (
 	ServerKey   Key = 0
 )
 
-var (
-	IP         string
-	port       string
-	addr       *net.UDPAddr
-	connection *net.UDPConn
-)
-
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
-}
-
-func initServer(port string) {
-	PORT := ":" + port
-	addr, err := net.ResolveUDPAddr("udp4", PORT)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	connection, err = net.ListenUDP("udp", addr)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
 }
 
 func exit(ctx context.Context, t *fsm.Transition) {
@@ -107,6 +85,14 @@ func receive(ctx context.Context, t *fsm.Transition) {
 	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "send")
 }
 
+func synReceive(ctx context.Context, t *fsm.Transition) {
+
+}
+
+func waitForAck(ctx context.Context, t *fsm.Transition) {
+
+}
+
 func bindSocket(ctx context.Context, t *fsm.Transition) {
 	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
 	if !ok {
@@ -147,7 +133,10 @@ func main() {
 		[]fsm.Transitions{
 			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
 			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "receive", From: []string{"bind_socket", "send"}, To: "receive"},
+			{Name: "receive", From: []string{"bind_socket"}, To: "receive"},
+			// {Name: "syn_recv", From: []string{"bind_socket"}, To: "syn_recv"},
+			// {Name: "wait_for_ack", From: []string{"syn_recv"}, To: "wait_for_ack"},
+			// {Name: "receive", From: []string{"wait_for_ack"}, To: "receive"},
 			{Name: "send", From: []string{"receive"}, To: "send"},
 			{Name: "cleanup", From: []string{"bind_socket", "receive", "send"}, To: "cleanup"},
 			{Name: "exit", From: []string{"*"}, To: "end"},
@@ -155,6 +144,8 @@ func main() {
 		[]fsm.Actions{
 			{To: "parse_args", Callback: parseArgs},
 			{To: "bind_socket", Callback: bindSocket},
+			{To: "syn_recv", Callback: synReceive},     // send a syn/ack upon receving an ack from a client
+			{To: "wait_for_ack", Callback: waitForAck}, // gets the ack from a client
 			{To: "receive", Callback: receive},
 			{To: "send", Callback: send},
 			{To: "cleanup", Callback: cleanup},
