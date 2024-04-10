@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bufio"
 	"comp7005_project/fsm"
 	"context"
 	"fmt"
 	"net"
 	"os"
-	"strings"
 )
 
 type Key int
@@ -15,8 +13,10 @@ type Key int
 const ClientKey Key = 0
 
 type ClientCtx struct {
-	Socket        *net.UDPConn
-	Address, Text string
+	Socket   *net.UDPConn
+	Address  string
+	FilePath string
+	Data     string
 }
 
 func exit(ctx context.Context, t *fsm.Transition) {
@@ -53,7 +53,7 @@ func receive(ctx context.Context, t *fsm.Transition) {
 
 	fmt.Printf("Reply: %s\n", string(buffer[0:n]))
 
-	t.Fsm.Transition(ctx, "user_input")
+	t.Fsm.Transition(ctx, "cleanup")
 }
 
 func send(ctx context.Context, t *fsm.Transition) {
@@ -62,14 +62,7 @@ func send(ctx context.Context, t *fsm.Transition) {
 		t.Fsm.Transition(ctx, "cleanup")
 	}
 
-	data := []byte(clientCtx.Text + "\n")
-
-	_, err := clientCtx.Socket.Write(data)
-
-	if strings.TrimSpace(string(data)) == "STOP" {
-		fmt.Println("Exiting UDP client!")
-		t.Fsm.Transition(ctx, "cleanup")
-	}
+	_, err := clientCtx.Socket.Write([]byte(clientCtx.Data))
 
 	if err != nil {
 		fmt.Println(err)
@@ -79,18 +72,22 @@ func send(ctx context.Context, t *fsm.Transition) {
 	t.Fsm.Transition(ctx, "receive")
 }
 
-func userInput(ctx context.Context, t *fsm.Transition) {
+func readFile(ctx context.Context, t *fsm.Transition) {
 	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
 	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
+		t.Fsm.Transition(ctx, "exit")
 	}
 
-	reader := bufio.NewReader(os.Stdin)
+	content, err := os.ReadFile(clientCtx.FilePath)
+	if err != nil {
+		fmt.Println("Read File Error:\n", err)
+	}
 
-	fmt.Print(">> ")
-	text, _ := reader.ReadString('\n')
-	clientCtx.Text = text
+	if len(content) == 0 {
+		fmt.Println("File is empty")
+	}
 
+	clientCtx.Data = string(content)
 	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "send")
 }
 
@@ -110,7 +107,7 @@ func bindSocket(ctx context.Context, t *fsm.Transition) {
 	clientCtx.Socket = c
 
 	fmt.Printf("The UDP server is %s\n", clientCtx.Socket.RemoteAddr().String())
-	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "user_input")
+	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "read_file")
 }
 
 func parseArgs(ctx context.Context, t *fsm.Transition) {
@@ -119,7 +116,7 @@ func parseArgs(ctx context.Context, t *fsm.Transition) {
 		fmt.Println("Please provide a host:port string")
 		t.Fsm.Transition(ctx, "exit")
 	}
-	clientCtx := ClientCtx{Address: os.Args[1]}
+	clientCtx := ClientCtx{Address: os.Args[1], FilePath: os.Args[2]}
 
 	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "bind_socket")
 }
@@ -130,8 +127,8 @@ func main() {
 		[]fsm.Transitions{
 			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
 			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "user_input", From: []string{"bind_socket", "receive"}, To: "user_input"},
-			{Name: "send", From: []string{"user_input"}, To: "send"},
+			{Name: "read_file", From: []string{"bind_socket"}, To: "read_file"},
+			{Name: "send", From: []string{"read_file"}, To: "send"},
 			{Name: "receive", From: []string{"send"}, To: "receive"},
 			{Name: "cleanup", From: []string{"bind_socket", "user_input", "send", "receive"}, To: "cleanup"},
 			{Name: "exit", From: []string{"*"}, To: "end"},
@@ -139,11 +136,11 @@ func main() {
 		[]fsm.Actions{
 			{To: "parse_args", Callback: parseArgs},
 			{To: "bind_socket", Callback: bindSocket},
-			{To: "user_input", Callback: userInput},
 			{To: "send", Callback: send},
 			{To: "receive", Callback: receive},
 			{To: "cleanup", Callback: cleanup},
 			{To: "exit", Callback: exit},
+			{To: "read_file", Callback: readFile},
 		})
 
 	fsm.Transition(context.Background(), "parse_args")

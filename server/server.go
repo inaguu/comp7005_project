@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -21,7 +20,7 @@ type ServerCtx struct {
 }
 
 const (
-	INPUT_ERROR     = "Usage: <filename> -i <ip address> -p <port_number>"
+	INPUT_ERROR     = "Usage: <filename> <ip address> <port_number>"
 	ServerKey   Key = 0
 )
 
@@ -72,12 +71,11 @@ func send(ctx context.Context, t *fsm.Transition) {
 	if !ok {
 		t.Fsm.Transition(ctx, "cleanup")
 	}
-	fmt.Println(serverCtx.Socket, serverCtx.ClientAddress)
 
 	rand.Seed(time.Now().Unix())
 
 	data := []byte(strconv.Itoa(random(1, 1001)))
-	fmt.Printf("data: %s\n", string(data))
+	fmt.Printf("\ndata: %s\n", string(data))
 
 	_, err := serverCtx.Socket.WriteToUDP(data, serverCtx.ClientAddress)
 	if err != nil {
@@ -97,13 +95,13 @@ func receive(ctx context.Context, t *fsm.Transition) {
 	buffer := make([]byte, 1024)
 
 	n, addr, err := serverCtx.Socket.ReadFromUDP(buffer)
-
-	fmt.Print("-> ", string(buffer[0:n-1]))
-
-	if strings.TrimSpace(string(buffer[0:n])) == "STOP" || err != nil {
-		fmt.Println("Exiting UDP server!")
+	if err != nil {
+		fmt.Println(err)
 		t.Fsm.Transition(ctx, "cleanup")
 	}
+
+	fmt.Print("-> ", string(buffer[0:n]))
+
 	serverCtx.ClientAddress = addr
 
 	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "send")
@@ -120,14 +118,12 @@ func bindSocket(ctx context.Context, t *fsm.Transition) {
 		fmt.Println(err)
 		t.Fsm.Transition(ctx, "exit")
 	}
-	fmt.Println(s)
 
 	connection, err := net.ListenUDP("udp4", s)
 	if err != nil {
 		fmt.Println(err)
 		t.Fsm.Transition(ctx, "exit")
 	}
-	fmt.Println(connection)
 
 	serverCtx.Socket = connection
 
