@@ -1,9 +1,7 @@
 package main
 
 import (
-	"comp7005_project/fsm"
 	"comp7005_project/utils"
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -25,68 +23,48 @@ type packet struct {
 	ACK uint8
 }
 
-func exit(ctx context.Context, t *fsm.Transition) {
+func exit(clientCtx *ClientCtx) {
 	fmt.Println("Exiting...")
 	os.Exit(0)
 }
 
-func cleanup(ctx context.Context, t *fsm.Transition) {
-	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func cleanup(clientCtx *ClientCtx) {
 	if clientCtx.Socket != nil {
 		clientCtx.Socket.Close()
 	}
 
-	t.Fsm.Transition(ctx, "exit")
+	exit(clientCtx)
 }
 
-func receive(ctx context.Context, t *fsm.Transition) {
-	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func receive(clientCtx *ClientCtx) {
 	buffer := make([]byte, 1024)
 
 	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(clientCtx)
 	}
 
 	fmt.Printf("Reply: %s\n", string(buffer[0:n]))
 
-	t.Fsm.Transition(ctx, "cleanup")
+	cleanup(clientCtx)
 }
 
-func send(ctx context.Context, t *fsm.Transition) {
-	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func send(clientCtx *ClientCtx) {
 	_, err := clientCtx.Socket.Write([]byte(clientCtx.Data))
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(clientCtx)
 	}
 	fmt.Println("sent", clientCtx.Data)
-	t.Fsm.Transition(ctx, "receive")
+	receive(clientCtx)
 }
 
-func waitForSynAck(ctx context.Context, t *fsm.Transition) {
-	t.Fsm.Transition(ctx, "send")
+func waitForSynAck(clientCtx *ClientCtx) {
+	send(clientCtx)
 }
 
-func sendSyn(ctx context.Context, t *fsm.Transition) {
-	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func sendSyn(clientCtx *ClientCtx) {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
@@ -102,21 +80,13 @@ func sendSyn(ctx context.Context, t *fsm.Transition) {
 	_, err = clientCtx.Socket.Write(bytes)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(clientCtx)
 	}
 
-	t.Fsm.Transition(ctx, "wait_for_syn_ack")
+	waitForSynAck(clientCtx)
 }
 
-func encryptPacket(ctx context.Context) {
-}
-
-func readFile(ctx context.Context, t *fsm.Transition) {
-	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func readFile(clientCtx *ClientCtx) {
 	content, err := os.ReadFile(clientCtx.FilePath)
 	if err != nil {
 		fmt.Println("Read File Error:\n", err)
@@ -127,64 +97,36 @@ func readFile(ctx context.Context, t *fsm.Transition) {
 	}
 
 	clientCtx.Data = string(content)
-	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "send_syn")
+	sendSyn(clientCtx)
 }
 
-func bindSocket(ctx context.Context, t *fsm.Transition) {
-	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func bindSocket(clientCtx *ClientCtx) {
 	s, _ := net.ResolveUDPAddr("udp4", clientCtx.Address)
 	c, err := net.DialUDP("udp4", nil, s)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "exit")
+		exit(clientCtx)
 	}
 
 	clientCtx.Socket = c
 
 	fmt.Printf("The UDP server is %s\n", clientCtx.Socket.RemoteAddr().String())
-	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "read_file")
+	readFile(clientCtx)
 }
 
-func parseArgs(ctx context.Context, t *fsm.Transition) {
+func parseArgs(clientCtx *ClientCtx) {
 	arguments := os.Args
 	if len(arguments) == 1 {
 		fmt.Println("Please provide a host:port string")
-		t.Fsm.Transition(ctx, "exit")
+		exit(clientCtx)
 	}
-	clientCtx := ClientCtx{Address: os.Args[1], FilePath: os.Args[2]}
+	clientCtx.Address = os.Args[1]
+	clientCtx.FilePath = os.Args[2]
 
-	t.Fsm.Transition(context.WithValue(ctx, ClientKey, clientCtx), "bind_socket")
+	bindSocket(clientCtx)
 }
 
 func main() {
-	fsm := fsm.Build(
-		"start",
-		[]fsm.Transitions{
-			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
-			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "read_file", From: []string{"bind_socket"}, To: "read_file"},
-			{Name: "send_syn", From: []string{"read_file"}, To: "send_syn"},
-			{Name: "wait_for_syn_ack", From: []string{"send_syn"}, To: "wait_for_syn_ack"},
-			{Name: "send", From: []string{"wait_for_syn_ack"}, To: "send"},
-			{Name: "receive", From: []string{"send"}, To: "receive"},
-			{Name: "cleanup", From: []string{"bind_socket", "user_input", "send", "receive"}, To: "cleanup"},
-			{Name: "exit", From: []string{"*"}, To: "end"},
-		},
-		[]fsm.Actions{
-			{To: "parse_args", Callback: parseArgs},
-			{To: "bind_socket", Callback: bindSocket},
-			{To: "read_file", Callback: readFile},
-			{To: "send_syn", Callback: sendSyn},
-			{To: "wait_for_syn_ack", Callback: waitForSynAck},
-			{To: "send", Callback: send},
-			{To: "receive", Callback: receive},
-			{To: "cleanup", Callback: cleanup},
-			{To: "exit", Callback: exit},
-		})
-
-	fsm.Transition(context.Background(), "parse_args")
+	clientCtx := ClientCtx{}
+	parseArgs(&clientCtx)
 }
