@@ -18,7 +18,7 @@ type ProxyCtx struct {
 	ServerAddress          *net.UDPAddr
 	ProxyAddress           *net.UDPAddr
 	SIp, DIp, SPort, DPort string
-	Data                   string
+	Data                   []byte
 }
 
 func exit(ctx context.Context, t *fsm.Transition) {
@@ -51,7 +51,7 @@ func receive(ctx context.Context, t *fsm.Transition) {
 	if err != nil {
 		fmt.Println(err)
 	}
-	proxyCtx.Data = string(buffer[0:n])
+	proxyCtx.Data = buffer[0:n]
 
 	if check {
 		proxyCtx.ClientAddress = addr

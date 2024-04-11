@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"comp7005_project/fsm"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"net"
@@ -23,6 +25,11 @@ const (
 	INPUT_ERROR     = "Usage: <filename> <ip address> <port_number>"
 	ServerKey   Key = 0
 )
+
+type packet struct {
+	SYN uint8
+	ACK uint8
+}
 
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
@@ -86,10 +93,38 @@ func receive(ctx context.Context, t *fsm.Transition) {
 }
 
 func synReceive(ctx context.Context, t *fsm.Transition) {
+	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
 
+	buffer := make([]byte, 1024)
+
+	n, _, err := serverCtx.Socket.ReadFromUDP(buffer)
+	if err != nil {
+		fmt.Println(err)
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	buf := bytes.NewBuffer(buffer[0:n])
+	var synPacket packet
+
+	errPacket := binary.Read(buf, binary.BigEndian, &synPacket)
+	if errPacket != nil {
+		fmt.Println("failed to Read:", errPacket)
+		return
+	}
+
+	fmt.Printf("-> %v\n", synPacket)
+
+	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "wait_for_ack")
 }
 
 func waitForAck(ctx context.Context, t *fsm.Transition) {
+	t.Fsm.Transition(ctx, "receive")
+}
+
+func decryptPacket(ctx context.Context) {
 
 }
 
@@ -113,7 +148,7 @@ func bindSocket(ctx context.Context, t *fsm.Transition) {
 
 	serverCtx.Socket = connection
 
-	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "receive")
+	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "syn_recv")
 }
 
 func parseArgs(ctx context.Context, t *fsm.Transition) {
@@ -133,10 +168,9 @@ func main() {
 		[]fsm.Transitions{
 			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
 			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "receive", From: []string{"bind_socket", "send"}, To: "receive"},
-			// {Name: "syn_recv", From: []string{"bind_socket"}, To: "syn_recv"},
-			// {Name: "wait_for_ack", From: []string{"syn_recv"}, To: "wait_for_ack"},
-			// {Name: "receive", From: []string{"wait_for_ack"}, To: "receive"},
+			{Name: "syn_recv", From: []string{"bind_socket"}, To: "syn_recv"},
+			{Name: "wait_for_ack", From: []string{"syn_recv"}, To: "wait_for_ack"},
+			{Name: "receive", From: []string{"wait_for_ack", "send"}, To: "receive"},
 			{Name: "send", From: []string{"receive"}, To: "send"},
 			{Name: "cleanup", From: []string{"bind_socket", "receive", "send"}, To: "cleanup"},
 			{Name: "exit", From: []string{"*"}, To: "end"},

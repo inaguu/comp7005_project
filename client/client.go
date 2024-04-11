@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"comp7005_project/fsm"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -17,6 +19,11 @@ type ClientCtx struct {
 	Address  string
 	FilePath string
 	Data     string
+}
+
+type packet struct {
+	SYN uint8
+	ACK uint8
 }
 
 func exit(ctx context.Context, t *fsm.Transition) {
@@ -72,11 +79,37 @@ func send(ctx context.Context, t *fsm.Transition) {
 }
 
 func waitForSynAck(ctx context.Context, t *fsm.Transition) {
+
 	t.Fsm.Transition(ctx, "send")
 }
 
 func sendSyn(ctx context.Context, t *fsm.Transition) {
+	clientCtx, ok := ctx.Value(ClientKey).(ClientCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	synPacket := packet{SYN: 1, ACK: 0}
+
+	buf := new(bytes.Buffer)
+
+	packetErr := binary.Write(buf, binary.BigEndian, synPacket)
+	if packetErr != nil {
+		fmt.Println(packetErr)
+		return
+	}
+
+	_, err := clientCtx.Socket.Write(buf.Bytes())
+	if err != nil {
+		fmt.Println(err)
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
 	t.Fsm.Transition(ctx, "wait_for_syn_ack")
+}
+
+func encryptPacket(ctx context.Context) {
+
 }
 
 func readFile(ctx context.Context, t *fsm.Transition) {
