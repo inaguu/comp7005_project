@@ -38,6 +38,8 @@ func cleanup(ctx context.Context, t *fsm.Transition) {
 	t.Fsm.Transition(ctx, "exit")
 }
 
+var check = true
+
 func receive(ctx context.Context, t *fsm.Transition) {
 	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
 	if !ok {
@@ -49,13 +51,12 @@ func receive(ctx context.Context, t *fsm.Transition) {
 	if err != nil {
 		fmt.Println(err)
 	}
-
-	fmt.Printf("%s:%d\n", addr.IP, addr.Port)
-	fmt.Printf("%s:%d\n", proxyCtx.ServerAddress.IP, proxyCtx.ServerAddress.Port)
-
-	proxyCtx.ClientAddress = addr
-
 	proxyCtx.Data = string(buffer[0:n])
+
+	if check {
+		proxyCtx.ClientAddress = addr
+		check = false
+	}
 
 	fmt.Println("Data:", proxyCtx.Data)
 
