@@ -16,7 +16,9 @@ type ProxyCtx struct {
 	Socket                 *net.UDPConn
 	ClientAddress          *net.UDPAddr
 	ServerAddress          *net.UDPAddr
+	ProxyAddress           *net.UDPAddr
 	SIp, DIp, SPort, DPort string
+	Data                   string
 }
 
 func exit(ctx context.Context, t *fsm.Transition) {
@@ -43,12 +45,60 @@ func receive(ctx context.Context, t *fsm.Transition) {
 	}
 
 	buffer := make([]byte, 1024)
-	n, _, err := proxyCtx.Socket.ReadFromUDP(buffer)
+	n, addr, err := proxyCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println("Data:", string(buffer[0:n]))
 
+	fmt.Printf("%s:%d\n", addr.IP, addr.Port)
+	fmt.Printf("%s:%d\n", proxyCtx.ServerAddress.IP, proxyCtx.ServerAddress.Port)
+
+	proxyCtx.ClientAddress = addr
+
+	proxyCtx.Data = string(buffer[0:n])
+
+	fmt.Println("Data:", proxyCtx.Data)
+
+	if sendTo(fmt.Sprintf("%s:%d", addr.IP, addr.Port), fmt.Sprintf("%s:%d", proxyCtx.ServerAddress.IP, proxyCtx.ServerAddress.Port)) {
+		t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "send_to_client")
+	} else {
+		t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "send_to_server")
+	}
+}
+
+func sendTo(ip string, server string) bool {
+	if ip == server {
+		return true
+	} else {
+		return false
+	}
+}
+
+func sendToClient(ctx context.Context, t *fsm.Transition) {
+	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	_, err := proxyCtx.Socket.WriteToUDP([]byte(proxyCtx.Data), proxyCtx.ClientAddress)
+	if err != nil {
+		fmt.Println(err)
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+	t.Fsm.Transition(ctx, "receive")
+}
+
+func sendToServer(ctx context.Context, t *fsm.Transition) {
+	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
+	if !ok {
+		t.Fsm.Transition(ctx, "cleanup")
+	}
+
+	_, err := proxyCtx.Socket.WriteToUDP([]byte(proxyCtx.Data), proxyCtx.ServerAddress)
+	if err != nil {
+		fmt.Println(err)
+		t.Fsm.Transition(ctx, "cleanup")
+	}
 	t.Fsm.Transition(ctx, "receive")
 }
 
@@ -63,15 +113,15 @@ func connectToServer(ctx context.Context, t *fsm.Transition) {
 		t.Fsm.Transition(ctx, "exit")
 	}
 
-	proxyCtx.ClientAddress = s
+	proxyCtx.ServerAddress = s
 	_, err = net.DialUDP("udp4", nil, s)
 	if err != nil {
 		t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "cleanup")
 	}
 
-	fmt.Println("Connected to UDP server at", proxyCtx.ClientAddress)
+	fmt.Println("Connected to UDP server at", proxyCtx.ServerAddress)
 
-	t.Fsm.Transition(ctx, "receive")
+	t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "receive")
 }
 
 // both
@@ -93,10 +143,10 @@ func bind_socket(ctx context.Context, t *fsm.Transition) {
 		t.Fsm.Transition(ctx, "exit")
 	}
 
-	proxyCtx.ServerAddress = s
+	proxyCtx.ProxyAddress = s
 	proxyCtx.Socket = connection
 
-	fmt.Println("The UDP server is", proxyCtx.ServerAddress)
+	fmt.Println("The UDP server is", proxyCtx.ProxyAddress)
 
 	t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "connect_to_server")
 }
@@ -118,7 +168,10 @@ func main() {
 			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
 			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
 			{Name: "connect_to_server", From: []string{"bind_socket"}, To: "connect_to_server"},
-			{Name: "receive", From: []string{"connect_to_server", "receive"}, To: "receive"},
+			{Name: "receive", From: []string{"connect_to_server", "receive", "send_to_server", "send_to_client"}, To: "receive"},
+			{Name: "send_to_server", From: []string{"receive"}, To: "send_to_server"},
+			{Name: "send_to_client", From: []string{"receive"}, To: "send_to_client"},
+			{Name: "cleanup", From: []string{"*"}, To: "cleanup"},
 			{Name: "exit", From: []string{"*"}, To: "exit"},
 		},
 		[]fsm.Actions{
@@ -126,6 +179,8 @@ func main() {
 			{To: "bind_socket", Callback: bind_socket},
 			{To: "connect_to_server", Callback: connectToServer},
 			{To: "receive", Callback: receive},
+			{To: "send_to_server", Callback: sendToServer},
+			{To: "send_to_client", Callback: sendToClient},
 			{To: "cleanup", Callback: cleanup},
 			{To: "exit", Callback: exit},
 		})

@@ -133,7 +133,7 @@ func main() {
 		[]fsm.Transitions{
 			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
 			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "receive", From: []string{"bind_socket"}, To: "receive"},
+			{Name: "receive", From: []string{"bind_socket", "send"}, To: "receive"},
 			// {Name: "syn_recv", From: []string{"bind_socket"}, To: "syn_recv"},
 			// {Name: "wait_for_ack", From: []string{"syn_recv"}, To: "wait_for_ack"},
 			// {Name: "receive", From: []string{"wait_for_ack"}, To: "receive"},
