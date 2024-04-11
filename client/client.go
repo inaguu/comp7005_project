@@ -1,10 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"comp7005_project/fsm"
+	"comp7005_project/utils"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"os"
@@ -79,7 +78,6 @@ func send(ctx context.Context, t *fsm.Transition) {
 }
 
 func waitForSynAck(ctx context.Context, t *fsm.Transition) {
-
 	t.Fsm.Transition(ctx, "send")
 }
 
@@ -89,17 +87,19 @@ func sendSyn(ctx context.Context, t *fsm.Transition) {
 		t.Fsm.Transition(ctx, "cleanup")
 	}
 
-	synPacket := packet{SYN: 1, ACK: 0}
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{SYN: true}, Seq: 0, Ack: 0, Len: 0},
+	}
 
-	buf := new(bytes.Buffer)
-
-	packetErr := binary.Write(buf, binary.BigEndian, synPacket)
-	if packetErr != nil {
-		fmt.Println(packetErr)
+	bytes, err := utils.EncodePacket(packet)
+	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
-	_, err := clientCtx.Socket.Write(buf.Bytes())
+	_, err = clientCtx.Socket.Write(bytes)
 	if err != nil {
 		fmt.Println(err)
 		t.Fsm.Transition(ctx, "cleanup")
@@ -109,7 +109,6 @@ func sendSyn(ctx context.Context, t *fsm.Transition) {
 }
 
 func encryptPacket(ctx context.Context) {
-
 }
 
 func readFile(ctx context.Context, t *fsm.Transition) {
