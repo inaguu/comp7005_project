@@ -56,6 +56,14 @@ func receive(proxyCtx *ProxyCtx) {
 	}
 }
 
+func dropPacket(proxyCtx *ProxyCtx) {
+
+}
+
+func delayPacket(proxyCtx *ProxyCtx) {
+
+}
+
 func sendTo(ip string, server string) bool {
 	if ip == server {
 		return true

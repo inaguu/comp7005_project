@@ -16,6 +16,7 @@ type ClientCtx struct {
 	Address  string
 	FilePath string
 	Data     string
+	Packet   utils.Packet
 }
 
 func exit(clientCtx *ClientCtx) {
@@ -35,7 +36,7 @@ func sendFinalAck(clientCtx *ClientCtx) {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: 0, Ack: 0, Len: 0},
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len, Len: 1},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -49,7 +50,7 @@ func sendFinalAck(clientCtx *ClientCtx) {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
-	fmt.Println("Sent -> ACK")
+	fmt.Println("Sent -> ACK with packet: ", packet)
 
 	cleanup(clientCtx)
 }
@@ -71,8 +72,10 @@ func waitForFinAck(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
+	clientCtx.Packet = packet
+
 	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
-		fmt.Println("Received -> FIN/ACK")
+		fmt.Println("Received -> FIN/ACK with packet: ", packet)
 		sendFinalAck(clientCtx)
 	} else {
 		fmt.Println("The packet wasn't a FIN/ACK")
@@ -83,7 +86,7 @@ func sendFin(clientCtx *ClientCtx) {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: 0, Ack: 0, Len: 0},
+		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len, Len: 1},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -97,7 +100,7 @@ func sendFin(clientCtx *ClientCtx) {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
-	fmt.Println("Sent -> FIN")
+	fmt.Println("Sent -> FIN with packet: ", packet)
 	waitForFinAck(clientCtx)
 }
 
@@ -110,7 +113,17 @@ func receive(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Printf("Received: %s\n", string(buffer[0:n]))
+	bytes := buffer[0:n]
+
+	packet, err := utils.DecodePacket(bytes)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+
+	clientCtx.Packet = packet
+
+	fmt.Println("\nReceived -> ACK with packet: ", packet)
 
 	sendFin(clientCtx)
 }
@@ -119,7 +132,7 @@ func send(clientCtx *ClientCtx) {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: 0, Ack: 0, Len: 0},
+		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
 		Data:    clientCtx.Data,
 	}
 
@@ -135,7 +148,7 @@ func send(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Println("Sent ->", clientCtx.Data)
+	fmt.Printf("Sent -> %s with packet: %v", clientCtx.Data, packet)
 	receive(clientCtx)
 }
 
@@ -156,8 +169,10 @@ func waitForSynAck(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
+	clientCtx.Packet = packet
+
 	if packet.Header.Flags.SYN && packet.Header.Flags.ACK {
-		fmt.Println("Received -> SYN/ACK")
+		fmt.Println("Received -> SYN/ACK with packet: ", packet)
 		sendAck(clientCtx)
 	} else {
 		fmt.Println("The packet wasn't a SYN/ACK packet")
@@ -168,7 +183,7 @@ func sendAck(clientCtx *ClientCtx) {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: 0, Ack: 0, Len: 0},
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: 1, Ack: 1, Len: 0},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -182,7 +197,7 @@ func sendAck(clientCtx *ClientCtx) {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
-	fmt.Println("Sent -> ACK")
+	fmt.Println("Sent -> ACK with packet: ", packet)
 	send(clientCtx)
 }
 
@@ -205,7 +220,7 @@ func sendSyn(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Println("Sent -> SYN")
+	fmt.Println("Sent -> SYN with packet: ", clientCtx.Packet)
 	waitForSynAck(clientCtx)
 }
 
