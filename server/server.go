@@ -1,8 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
+	"comp7005_project/utils"
 	"fmt"
 	"math/rand"
 	"net"
@@ -17,17 +16,13 @@ type ServerCtx struct {
 	Socket        *net.UDPConn
 	ClientAddress *net.UDPAddr
 	Ip, Port      string
+	Packet        utils.Packet
 }
 
 const (
 	INPUT_ERROR     = "Usage: <filename> <ip address> <port_number>"
 	ServerKey   Key = 0
 )
-
-type packet struct {
-	SYN uint8
-	ACK uint8
-}
 
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
@@ -49,7 +44,7 @@ func send(serverCtx *ServerCtx) {
 	rand.Seed(time.Now().Unix())
 
 	data := []byte(strconv.Itoa(random(1, 1001)))
-	fmt.Printf("\ndata: %s\n", string(data))
+	fmt.Printf("Data: %s\n", string(data))
 
 	_, err := serverCtx.Socket.WriteToUDP(data, serverCtx.ClientAddress)
 	if err != nil {
@@ -69,33 +64,26 @@ func receive(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
-	fmt.Print("-> ", string(buffer[0:n]))
+	bytes := buffer[0:n]
 
-	serverCtx.ClientAddress = addr
-
-	send(serverCtx)
-}
-
-func synReceive(serverCtx *ServerCtx) {
-	buffer := make([]byte, 1024)
-
-	n, _, err := serverCtx.Socket.ReadFromUDP(buffer)
+	packet, err := utils.DecodePacket(bytes)
 	if err != nil {
 		fmt.Println(err)
 		cleanup(serverCtx)
 	}
 
-	buf := bytes.NewBuffer(buffer[0:n])
-	var synPacket packet
+	fmt.Println("-> ", packet)
+	serverCtx.ClientAddress = addr
 
-	errPacket := binary.Read(buf, binary.BigEndian, &synPacket)
-	if errPacket != nil {
-		fmt.Println("failed to Read:", errPacket)
-		return
+	if packet.Header.Flags.SYN {
+		serverCtx.Packet = packet
+		sendSynAck(serverCtx)
+	} else {
+		send(serverCtx)
 	}
+}
 
-	fmt.Printf("-> %v\n", synPacket)
-
+func sendSynAck(serverCtx *ServerCtx) {
 	waitForAck(serverCtx)
 }
 
@@ -118,7 +106,7 @@ func bindSocket(serverCtx *ServerCtx) {
 
 	serverCtx.Socket = connection
 
-	synReceive(serverCtx)
+	receive(serverCtx)
 }
 
 func parseArgs(serverCtx *ServerCtx) {

@@ -51,11 +51,25 @@ func receive(clientCtx *ClientCtx) {
 }
 
 func send(clientCtx *ClientCtx) {
-	_, err := clientCtx.Socket.Write([]byte(clientCtx.Data))
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: 0, Ack: 0, Len: 0},
+		Data:    clientCtx.Data,
+	}
+
+	bytes, err := utils.EncodePacket(packet)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = clientCtx.Socket.Write(bytes)
 	if err != nil {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
+
 	fmt.Println("sent", clientCtx.Data)
 	receive(clientCtx)
 }
