@@ -31,6 +31,76 @@ func cleanup(clientCtx *ClientCtx) {
 	exit(clientCtx)
 }
 
+func sendFinalAck(clientCtx *ClientCtx) {
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: 0, Ack: 0, Len: 0},
+	}
+
+	bytes, err := utils.EncodePacket(packet)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = clientCtx.Socket.Write(bytes)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+	fmt.Println("Sent -> ACK")
+
+	cleanup(clientCtx)
+}
+
+func waitForFinAck(clientCtx *ClientCtx) {
+	buffer := make([]byte, 1024)
+
+	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+
+	bytes := buffer[0:n]
+
+	packet, err := utils.DecodePacket(bytes)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+
+	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
+		fmt.Println("Received -> FIN/ACK")
+		sendFinalAck(clientCtx)
+	} else {
+		fmt.Println("The packet wasn't a FIN/ACK")
+	}
+}
+
+func sendFin(clientCtx *ClientCtx) {
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: 0, Ack: 0, Len: 0},
+	}
+
+	bytes, err := utils.EncodePacket(packet)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = clientCtx.Socket.Write(bytes)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+	fmt.Println("Sent -> FIN")
+	waitForFinAck(clientCtx)
+}
+
 func receive(clientCtx *ClientCtx) {
 	buffer := make([]byte, 1024)
 
@@ -42,7 +112,7 @@ func receive(clientCtx *ClientCtx) {
 
 	fmt.Printf("Received: %s\n", string(buffer[0:n]))
 
-	cleanup(clientCtx)
+	sendFin(clientCtx)
 }
 
 func send(clientCtx *ClientCtx) {
@@ -92,7 +162,6 @@ func waitForSynAck(clientCtx *ClientCtx) {
 	} else {
 		fmt.Println("The packet wasn't a SYN/ACK packet")
 	}
-
 }
 
 func sendAck(clientCtx *ClientCtx) {
@@ -115,7 +184,6 @@ func sendAck(clientCtx *ClientCtx) {
 	}
 	fmt.Println("Sent -> ACK")
 	send(clientCtx)
-
 }
 
 func sendSyn(clientCtx *ClientCtx) {

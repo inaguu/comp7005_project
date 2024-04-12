@@ -40,6 +40,30 @@ func cleanup(serverCtx *ServerCtx) {
 	exit(serverCtx)
 }
 
+func sendFinAck(serverCtx *ServerCtx) {
+	packet := utils.Packet{
+		SrcAddr: serverCtx.Packet.SrcAddr,
+		DstAddr: serverCtx.Packet.DstAddr,
+		Header:  utils.Header{Flags: utils.Flags{FIN: true, ACK: true}, Seq: 0, Ack: 0, Len: 0},
+	}
+
+	bytes, err := utils.EncodePacket(packet)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = serverCtx.Socket.WriteToUDP(bytes, serverCtx.ClientAddress)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(serverCtx)
+	}
+
+	fmt.Println("Sent -> FIN/ACK")
+
+	waitForAck(serverCtx)
+}
+
 func send(serverCtx *ServerCtx) {
 	rand.Seed(time.Now().Unix())
 
@@ -78,6 +102,9 @@ func receive(serverCtx *ServerCtx) {
 		fmt.Println("Received -> SYN")
 		serverCtx.Packet = packet
 		sendSynAck(serverCtx)
+	} else if packet.Header.Flags.FIN {
+		fmt.Println("Received -> FIN")
+		sendFinAck(serverCtx)
 	} else {
 		fmt.Println("Received ->", packet.Data)
 		send(serverCtx)
