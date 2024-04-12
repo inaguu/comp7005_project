@@ -13,24 +13,29 @@ type Key int
 const ClientKey Key = 0
 
 type ClientCtx struct {
-	Socket   *net.UDPConn
-	Address  string
-	FilePath string
-	Data     string
-	Packet   utils.Packet
+	Socket     *net.UDPConn
+	Address    string
+	FilePath   string
+	Data       string
+	Packet     utils.Packet
+	DataToSend []string
 }
 
 func buildPackets(clientCtx *ClientCtx) []utils.Packet {
 	var packets []utils.Packet
 
-	packet := utils.Packet{
-		SrcAddr: clientCtx.Address,
-		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
-		Data:    clientCtx.Data,
+	for i := range clientCtx.DataToSend {
+		packet := utils.Packet{
+			SrcAddr: clientCtx.Address,
+			DstAddr: clientCtx.Socket.LocalAddr().String(),
+			Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
+			Data:    clientCtx.DataToSend[i],
+		}
+
+		packets = append(packets, packet)
 	}
 
-	return append(packets, packet)
+	return packets
 }
 
 func packetString(packet utils.Packet) string {
@@ -158,7 +163,16 @@ func receive(clientCtx *ClientCtx) bool {
 	return false
 }
 
+func splitData(clientCtx *ClientCtx) {
+	if (len(clientCtx.Data)) > 512 {
+		clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[0:512])
+		clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[512:1024])
+	}
+}
+
 func send(clientCtx *ClientCtx) {
+	splitData(clientCtx)
+
 	packets := buildPackets(clientCtx)
 
 	for _, packet := range packets {
