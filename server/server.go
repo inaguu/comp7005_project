@@ -22,6 +22,10 @@ const (
 	ServerKey   Key = 0
 )
 
+func packetString(packet utils.Packet) string {
+	return fmt.Sprintf("[Seq: %d | Ack: %d]", packet.Header.Seq, packet.Header.Ack)
+}
+
 func random(min, max int) int {
 	return rand.Intn(max-min) + min
 }
@@ -57,7 +61,7 @@ func sendFinAck(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
-	fmt.Println("Sent -> FIN/ACK with packet: ", packet)
+	fmt.Println("Sent -> FIN/ACK with packet:", packetString(packet))
 
 	waitForAck(serverCtx)
 }
@@ -92,7 +96,7 @@ func send(serverCtx *ServerCtx) {
 	// 	cleanup(serverCtx)
 	// }
 
-	fmt.Println("\nSend -> ACK with packet: ", packet)
+	fmt.Println("\nSend -> ACK with packet:", packetString(packet))
 
 	receive(serverCtx)
 }
@@ -118,13 +122,13 @@ func receive(serverCtx *ServerCtx) {
 	serverCtx.Packet = packet
 
 	if packet.Header.Flags.SYN {
-		fmt.Println("Received -> SYN with packet: ", packet)
+		fmt.Println("Received -> SYN with packet:", packetString(packet))
 		sendSynAck(serverCtx)
 	} else if packet.Header.Flags.FIN {
-		fmt.Println("Received -> FIN with packet: ", packet)
+		fmt.Println("Received -> FIN with packet:", packetString(packet))
 		sendFinAck(serverCtx)
 	} else {
-		fmt.Printf("Received -> %s with packet: %v", packet.Data, packet)
+		fmt.Printf("Received -> %s with packet: %s", packet.Data, packetString(packet))
 		send(serverCtx)
 	}
 }
@@ -148,7 +152,7 @@ func sendSynAck(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
-	fmt.Println("Sent -> SYN/ACK with packet: ", packet)
+	fmt.Println("Sent -> SYN/ACK with packet:", packetString(packet))
 	waitForAck(serverCtx)
 }
 
@@ -170,7 +174,7 @@ func waitForAck(serverCtx *ServerCtx) {
 	}
 
 	if packet.Header.Flags.ACK {
-		fmt.Println("Received -> ACK with packet: ", packet)
+		fmt.Println("Received -> ACK with packet:", packetString(packet))
 		receive(serverCtx)
 	} else {
 		fmt.Println("The packet wasn't an ACK packet")

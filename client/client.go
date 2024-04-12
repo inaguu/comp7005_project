@@ -19,6 +19,10 @@ type ClientCtx struct {
 	Packet   utils.Packet
 }
 
+func packetString(packet utils.Packet) string {
+	return fmt.Sprintf("[Seq: %d | Ack: %d]", packet.Header.Seq, packet.Header.Ack)
+}
+
 func exit(clientCtx *ClientCtx) {
 	fmt.Println("Exiting...")
 	os.Exit(0)
@@ -50,7 +54,7 @@ func sendFinalAck(clientCtx *ClientCtx) {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
-	fmt.Println("Sent -> ACK with packet: ", packet)
+	fmt.Println("Sent -> ACK:", packetString(packet))
 
 	cleanup(clientCtx)
 }
@@ -75,7 +79,7 @@ func waitForFinAck(clientCtx *ClientCtx) {
 	clientCtx.Packet = packet
 
 	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
-		fmt.Println("Received -> FIN/ACK with packet: ", packet)
+		fmt.Println("Received -> FIN/ACK with packet:", packetString(packet))
 		sendFinalAck(clientCtx)
 	} else {
 		fmt.Println("The packet wasn't a FIN/ACK")
@@ -100,7 +104,7 @@ func sendFin(clientCtx *ClientCtx) {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
-	fmt.Println("Sent -> FIN with packet: ", packet)
+	fmt.Println("Sent -> FIN with packet:", packetString(packet))
 	waitForFinAck(clientCtx)
 }
 
@@ -123,7 +127,7 @@ func receive(clientCtx *ClientCtx) {
 
 	clientCtx.Packet = packet
 
-	fmt.Println("\nReceived -> ACK with packet: ", packet)
+	fmt.Println("\nReceived -> ACK with packet:", packetString(packet))
 
 	sendFin(clientCtx)
 }
@@ -148,7 +152,7 @@ func send(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Printf("Sent -> %s with packet: %v", clientCtx.Data, packet)
+	fmt.Printf("Sent -> %s with packet: %s", clientCtx.Data, packetString(packet))
 	receive(clientCtx)
 }
 
@@ -172,7 +176,7 @@ func waitForSynAck(clientCtx *ClientCtx) {
 	clientCtx.Packet = packet
 
 	if packet.Header.Flags.SYN && packet.Header.Flags.ACK {
-		fmt.Println("Received -> SYN/ACK with packet: ", packet)
+		fmt.Println("Received -> SYN/ACK with packet:", packetString(packet))
 		sendAck(clientCtx)
 	} else {
 		fmt.Println("The packet wasn't a SYN/ACK packet")
@@ -197,7 +201,7 @@ func sendAck(clientCtx *ClientCtx) {
 		fmt.Println(err)
 		cleanup(clientCtx)
 	}
-	fmt.Println("Sent -> ACK with packet: ", packet)
+	fmt.Println("Sent -> ACK with packet:", packetString(packet))
 	send(clientCtx)
 }
 
@@ -220,7 +224,7 @@ func sendSyn(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Println("Sent -> SYN with packet: ", clientCtx.Packet)
+	fmt.Println("Sent -> SYN with packet:", packetString(packet))
 	waitForSynAck(clientCtx)
 }
 
