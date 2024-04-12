@@ -1,8 +1,6 @@
 package main
 
 import (
-	"comp7005_project/fsm"
-	"context"
 	"fmt"
 	"net"
 	"os"
@@ -21,31 +19,21 @@ type ProxyCtx struct {
 	Data                   []byte
 }
 
-func exit(ctx context.Context, t *fsm.Transition) {
+func exit(proxyCtx *ProxyCtx) {
 	os.Exit(0)
 }
 
-func cleanup(ctx context.Context, t *fsm.Transition) {
-	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func cleanup(proxyCtx *ProxyCtx) {
 	if proxyCtx.Socket != nil {
 		proxyCtx.Socket.Close()
 	}
 
-	t.Fsm.Transition(ctx, "exit")
+	exit(proxyCtx)
 }
 
 var check = true
 
-func receive(ctx context.Context, t *fsm.Transition) {
-	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func receive(proxyCtx *ProxyCtx) {
 	buffer := make([]byte, 1024)
 	n, addr, err := proxyCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
@@ -61,9 +49,9 @@ func receive(ctx context.Context, t *fsm.Transition) {
 	fmt.Println("Data:", proxyCtx.Data)
 
 	if sendTo(fmt.Sprintf("%s:%d", addr.IP, addr.Port), fmt.Sprintf("%s:%d", proxyCtx.ServerAddress.IP, proxyCtx.ServerAddress.Port)) {
-		t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "send_to_client")
+		sendToClient(proxyCtx)
 	} else {
-		t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "send_to_server")
+		sendToServer(proxyCtx)
 	}
 }
 
@@ -75,73 +63,54 @@ func sendTo(ip string, server string) bool {
 	}
 }
 
-func sendToClient(ctx context.Context, t *fsm.Transition) {
-	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func sendToClient(proxyCtx *ProxyCtx) {
 	_, err := proxyCtx.Socket.WriteToUDP([]byte(proxyCtx.Data), proxyCtx.ClientAddress)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(proxyCtx)
 	}
-	t.Fsm.Transition(ctx, "receive")
+	receive(proxyCtx)
 }
 
-func sendToServer(ctx context.Context, t *fsm.Transition) {
-	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func sendToServer(proxyCtx *ProxyCtx) {
 	_, err := proxyCtx.Socket.WriteToUDP([]byte(proxyCtx.Data), proxyCtx.ServerAddress)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(proxyCtx)
 	}
-	t.Fsm.Transition(ctx, "receive")
+	receive(proxyCtx)
 }
 
-func connectToServer(ctx context.Context, t *fsm.Transition) {
-	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func connectToServer(proxyCtx *ProxyCtx) {
 	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", proxyCtx.DIp, proxyCtx.DPort))
 	if err != nil {
-		t.Fsm.Transition(ctx, "exit")
+		fmt.Println(err)
+		exit(proxyCtx)
 	}
 
 	proxyCtx.ServerAddress = s
 	_, err = net.DialUDP("udp4", nil, s)
 	if err != nil {
-		t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "cleanup")
+		cleanup(proxyCtx)
 	}
 
 	fmt.Println("Connected to UDP server at", proxyCtx.ServerAddress)
 
-	t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "receive")
+	receive(proxyCtx)
 }
 
 // both
-func bind_socket(ctx context.Context, t *fsm.Transition) {
-	proxyCtx, ok := ctx.Value(ProxyKey).(ProxyCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func bind_socket(proxyCtx *ProxyCtx) {
 	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", proxyCtx.SIp, proxyCtx.SPort))
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "exit")
+		exit(proxyCtx)
 	}
 
 	connection, err := net.ListenUDP("udp4", s)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "exit")
+		exit(proxyCtx)
 	}
 
 	proxyCtx.ProxyAddress = s
@@ -149,42 +118,23 @@ func bind_socket(ctx context.Context, t *fsm.Transition) {
 
 	fmt.Println("The UDP server is", proxyCtx.ProxyAddress)
 
-	t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "connect_to_server")
+	connectToServer(proxyCtx)
 }
 
-func parseArgs(ctx context.Context, t *fsm.Transition) {
+func parseArgs(proxyCtx *ProxyCtx) {
 	if len(os.Args) < 5 {
-		t.Fsm.Transition(ctx, "exit")
+		exit(proxyCtx)
 	}
 
-	proxyCtx := ProxyCtx{SIp: os.Args[1], SPort: os.Args[2], DIp: os.Args[3], DPort: os.Args[4]}
+	proxyCtx.SIp = os.Args[1]
+	proxyCtx.SPort = os.Args[2]
+	proxyCtx.DIp = os.Args[3]
+	proxyCtx.DPort = os.Args[4]
 
-	t.Fsm.Transition(context.WithValue(ctx, ProxyKey, proxyCtx), "bind_socket")
+	bind_socket(proxyCtx)
 }
 
 func main() {
-	fsm := fsm.Build(
-		"start",
-		[]fsm.Transitions{
-			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
-			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "connect_to_server", From: []string{"bind_socket"}, To: "connect_to_server"},
-			{Name: "receive", From: []string{"connect_to_server", "receive", "send_to_server", "send_to_client"}, To: "receive"},
-			{Name: "send_to_server", From: []string{"receive"}, To: "send_to_server"},
-			{Name: "send_to_client", From: []string{"receive"}, To: "send_to_client"},
-			{Name: "cleanup", From: []string{"*"}, To: "cleanup"},
-			{Name: "exit", From: []string{"*"}, To: "exit"},
-		},
-		[]fsm.Actions{
-			{To: "parse_args", Callback: parseArgs},
-			{To: "bind_socket", Callback: bind_socket},
-			{To: "connect_to_server", Callback: connectToServer},
-			{To: "receive", Callback: receive},
-			{To: "send_to_server", Callback: sendToServer},
-			{To: "send_to_client", Callback: sendToClient},
-			{To: "cleanup", Callback: cleanup},
-			{To: "exit", Callback: exit},
-		})
-
-	fsm.Transition(context.Background(), "parse_args")
+	proxyCtx := ProxyCtx{}
+	parseArgs(&proxyCtx)
 }
