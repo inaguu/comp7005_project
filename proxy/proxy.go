@@ -20,6 +20,7 @@ type ProxyCtx struct {
 }
 
 func exit(proxyCtx *ProxyCtx) {
+	fmt.Println("Exiting...")
 	os.Exit(0)
 }
 

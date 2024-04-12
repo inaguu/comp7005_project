@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"comp7005_project/fsm"
-	"context"
 	"encoding/binary"
 	"fmt"
 	"math/rand"
@@ -35,28 +33,19 @@ func random(min, max int) int {
 	return rand.Intn(max-min) + min
 }
 
-func exit(ctx context.Context, t *fsm.Transition) {
+func exit(serverCtx *ServerCtx) {
 	fmt.Println("Exiting...")
 	os.Exit(0)
 }
 
-func cleanup(ctx context.Context, t *fsm.Transition) {
-	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "exit")
-	}
-
+func cleanup(serverCtx *ServerCtx) {
 	if serverCtx.Socket != nil {
 		serverCtx.Socket.Close()
 	}
+	exit(serverCtx)
 }
 
-func send(ctx context.Context, t *fsm.Transition) {
-	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func send(serverCtx *ServerCtx) {
 	rand.Seed(time.Now().Unix())
 
 	data := []byte(strconv.Itoa(random(1, 1001)))
@@ -65,45 +54,35 @@ func send(ctx context.Context, t *fsm.Transition) {
 	_, err := serverCtx.Socket.WriteToUDP(data, serverCtx.ClientAddress)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(serverCtx)
 	}
 
-	t.Fsm.Transition(ctx, "receive")
+	receive(serverCtx)
 }
 
-func receive(ctx context.Context, t *fsm.Transition) {
-	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func receive(serverCtx *ServerCtx) {
 	buffer := make([]byte, 1024)
 
 	n, addr, err := serverCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(serverCtx)
 	}
 
 	fmt.Print("-> ", string(buffer[0:n]))
 
 	serverCtx.ClientAddress = addr
 
-	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "send")
+	send(serverCtx)
 }
 
-func synReceive(ctx context.Context, t *fsm.Transition) {
-	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func synReceive(serverCtx *ServerCtx) {
 	buffer := make([]byte, 1024)
 
 	n, _, err := serverCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "cleanup")
+		cleanup(serverCtx)
 	}
 
 	buf := bytes.NewBuffer(buffer[0:n])
@@ -117,74 +96,44 @@ func synReceive(ctx context.Context, t *fsm.Transition) {
 
 	fmt.Printf("-> %v\n", synPacket)
 
-	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "wait_for_ack")
+	waitForAck(serverCtx)
 }
 
-func waitForAck(ctx context.Context, t *fsm.Transition) {
-	t.Fsm.Transition(ctx, "receive")
+func waitForAck(serverCtx *ServerCtx) {
+	receive(serverCtx)
 }
 
-func decryptPacket(ctx context.Context) {
-
-}
-
-func bindSocket(ctx context.Context, t *fsm.Transition) {
-	serverCtx, ok := ctx.Value(ServerKey).(ServerCtx)
-	if !ok {
-		t.Fsm.Transition(ctx, "cleanup")
-	}
-
+func bindSocket(serverCtx *ServerCtx) {
 	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", serverCtx.Ip, serverCtx.Port))
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "exit")
+		exit(serverCtx)
 	}
 
 	connection, err := net.ListenUDP("udp4", s)
 	if err != nil {
 		fmt.Println(err)
-		t.Fsm.Transition(ctx, "exit")
+		exit(serverCtx)
 	}
 
 	serverCtx.Socket = connection
 
-	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "syn_recv")
+	synReceive(serverCtx)
 }
 
-func parseArgs(ctx context.Context, t *fsm.Transition) {
+func parseArgs(serverCtx *ServerCtx) {
 	if len(os.Args) < 3 {
 		fmt.Println(INPUT_ERROR)
-		t.Fsm.Transition(ctx, "exit")
+		exit(serverCtx)
 	}
 
-	serverCtx := ServerCtx{Ip: os.Args[1], Port: os.Args[2]}
+	serverCtx.Ip = os.Args[1]
+	serverCtx.Port = os.Args[2]
 
-	t.Fsm.Transition(context.WithValue(ctx, ServerKey, serverCtx), "bind_socket")
+	bindSocket(serverCtx)
 }
 
 func main() {
-	fsm := fsm.Build(
-		"start",
-		[]fsm.Transitions{
-			{Name: "parse_args", From: []string{"start"}, To: "parse_args"},
-			{Name: "bind_socket", From: []string{"parse_args"}, To: "bind_socket"},
-			{Name: "syn_recv", From: []string{"bind_socket"}, To: "syn_recv"},
-			{Name: "wait_for_ack", From: []string{"syn_recv"}, To: "wait_for_ack"},
-			{Name: "receive", From: []string{"wait_for_ack", "send"}, To: "receive"},
-			{Name: "send", From: []string{"receive"}, To: "send"},
-			{Name: "cleanup", From: []string{"bind_socket", "receive", "send"}, To: "cleanup"},
-			{Name: "exit", From: []string{"*"}, To: "end"},
-		},
-		[]fsm.Actions{
-			{To: "parse_args", Callback: parseArgs},
-			{To: "bind_socket", Callback: bindSocket},
-			{To: "syn_recv", Callback: synReceive},     // send a syn/ack upon receving an ack from a client
-			{To: "wait_for_ack", Callback: waitForAck}, // gets the ack from a client
-			{To: "receive", Callback: receive},
-			{To: "send", Callback: send},
-			{To: "cleanup", Callback: cleanup},
-			{To: "exit", Callback: exit},
-		})
-
-	fsm.Transition(context.Background(), "parse_args")
+	serverCtx := ServerCtx{}
+	parseArgs(&serverCtx)
 }
