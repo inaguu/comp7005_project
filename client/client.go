@@ -18,11 +18,6 @@ type ClientCtx struct {
 	Data     string
 }
 
-type packet struct {
-	SYN uint8
-	ACK uint8
-}
-
 func exit(clientCtx *ClientCtx) {
 	fmt.Println("Exiting...")
 	os.Exit(0)
@@ -45,7 +40,7 @@ func receive(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Printf("Reply: %s\n", string(buffer[0:n]))
+	fmt.Printf("Received: %s\n", string(buffer[0:n]))
 
 	cleanup(clientCtx)
 }
@@ -70,12 +65,57 @@ func send(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
-	fmt.Println("sent", clientCtx.Data)
+	fmt.Println("Sent ->", clientCtx.Data)
 	receive(clientCtx)
 }
 
 func waitForSynAck(clientCtx *ClientCtx) {
+	buffer := make([]byte, 1024)
+
+	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+
+	bytes := buffer[0:n]
+
+	packet, err := utils.DecodePacket(bytes)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+
+	if packet.Header.Flags.SYN && packet.Header.Flags.ACK {
+		fmt.Println("Received -> SYN/ACK")
+		sendAck(clientCtx)
+	} else {
+		fmt.Println("The packet wasn't a SYN/ACK packet")
+	}
+
+}
+
+func sendAck(clientCtx *ClientCtx) {
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: 0, Ack: 0, Len: 0},
+	}
+
+	bytes, err := utils.EncodePacket(packet)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = clientCtx.Socket.Write(bytes)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(clientCtx)
+	}
+	fmt.Println("Sent -> ACK")
 	send(clientCtx)
+
 }
 
 func sendSyn(clientCtx *ClientCtx) {
@@ -97,6 +137,7 @@ func sendSyn(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 
+	fmt.Println("Sent -> SYN")
 	waitForSynAck(clientCtx)
 }
 
