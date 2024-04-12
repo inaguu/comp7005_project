@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 
 type Key int
@@ -17,6 +18,19 @@ type ClientCtx struct {
 	FilePath string
 	Data     string
 	Packet   utils.Packet
+}
+
+func buildPackets(clientCtx *ClientCtx) []utils.Packet {
+	var packets []utils.Packet
+
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
+		Data:    clientCtx.Data,
+	}
+
+	return append(packets, packet)
 }
 
 func packetString(packet utils.Packet) string {
@@ -108,8 +122,11 @@ func sendFin(clientCtx *ClientCtx) {
 	waitForFinAck(clientCtx)
 }
 
-func receive(clientCtx *ClientCtx) {
+func receive(clientCtx *ClientCtx) bool {
 	buffer := make([]byte, 1024)
+
+	deadline := time.Now().Add(10 * time.Second)
+	clientCtx.Socket.SetWriteDeadline(deadline)
 
 	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
@@ -121,48 +138,71 @@ func receive(clientCtx *ClientCtx) {
 
 	packet, err := utils.DecodePacket(bytes)
 	if err != nil {
-		fmt.Println(err)
-		cleanup(clientCtx)
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			fmt.Println("Timeout")
+			return false
+		} else {
+			fmt.Println(err)
+			cleanup(clientCtx)
+		}
 	}
 
 	clientCtx.Packet = packet
 
-	fmt.Println("\nReceived -> ACK with packet:", packetString(packet))
+	if clientCtx.Packet.Header.Flags.ACK {
+		fmt.Println("\nReceived -> ACK with packet:", packetString(packet))
+		return true
+	} else {
+		fmt.Println("\nDid not receive ACK packet")
+	}
+	return false
+}
+
+func send(clientCtx *ClientCtx) {
+	packets := buildPackets(clientCtx)
+
+	for _, packet := range packets {
+		bytes, err := utils.EncodePacket(packet)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		_, err = clientCtx.Socket.Write(bytes)
+		if err != nil {
+			fmt.Println(err)
+			cleanup(clientCtx)
+		}
+
+		fmt.Printf("Sent -> %s with packet: %s", clientCtx.Data, packetString(packet))
+
+		for !receive(clientCtx) {
+			_, err = clientCtx.Socket.Write(bytes)
+			if err != nil {
+				fmt.Println(err)
+				cleanup(clientCtx)
+			}
+		}
+	}
 
 	sendFin(clientCtx)
 }
 
-func send(clientCtx *ClientCtx) {
-	packet := utils.Packet{
-		SrcAddr: clientCtx.Address,
-		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
-		Data:    clientCtx.Data,
-	}
-
-	bytes, err := utils.EncodePacket(packet)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	_, err = clientCtx.Socket.Write(bytes)
-	if err != nil {
-		fmt.Println(err)
-		cleanup(clientCtx)
-	}
-
-	fmt.Printf("Sent -> %s with packet: %s", clientCtx.Data, packetString(packet))
-	receive(clientCtx)
-}
-
-func waitForSynAck(clientCtx *ClientCtx) {
+func synAckReceived(clientCtx *ClientCtx) bool {
 	buffer := make([]byte, 1024)
+
+	deadline := time.Now().Add(10 * time.Second)
+	clientCtx.Socket.SetReadDeadline(deadline)
 
 	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
-		fmt.Println(err)
-		cleanup(clientCtx)
+		if netError, ok := err.(net.Error); ok && netError.Timeout() {
+			fmt.Println("Timeout waiting for SYN/ACK")
+			return false
+		} else {
+			fmt.Println(err)
+			cleanup(clientCtx)
+		}
 	}
 
 	bytes := buffer[0:n]
@@ -177,10 +217,11 @@ func waitForSynAck(clientCtx *ClientCtx) {
 
 	if packet.Header.Flags.SYN && packet.Header.Flags.ACK {
 		fmt.Println("Received -> SYN/ACK with packet:", packetString(packet))
-		sendAck(clientCtx)
+		return true
 	} else {
 		fmt.Println("The packet wasn't a SYN/ACK packet")
 	}
+	return false
 }
 
 func sendAck(clientCtx *ClientCtx) {
@@ -202,7 +243,6 @@ func sendAck(clientCtx *ClientCtx) {
 		cleanup(clientCtx)
 	}
 	fmt.Println("Sent -> ACK with packet:", packetString(packet))
-	send(clientCtx)
 }
 
 func sendSyn(clientCtx *ClientCtx) {
@@ -225,7 +265,6 @@ func sendSyn(clientCtx *ClientCtx) {
 	}
 
 	fmt.Println("Sent -> SYN with packet:", packetString(packet))
-	waitForSynAck(clientCtx)
 }
 
 func readFile(clientCtx *ClientCtx) {
@@ -239,7 +278,7 @@ func readFile(clientCtx *ClientCtx) {
 	}
 
 	clientCtx.Data = string(content)
-	sendSyn(clientCtx)
+	establishConnection(clientCtx)
 }
 
 func bindSocket(clientCtx *ClientCtx) {
@@ -254,6 +293,18 @@ func bindSocket(clientCtx *ClientCtx) {
 
 	fmt.Printf("The UDP server is %s\n", clientCtx.Socket.RemoteAddr().String())
 	readFile(clientCtx)
+}
+
+func terminateConnection() {}
+
+func establishConnection(clientCtx *ClientCtx) {
+	sendSyn(clientCtx)
+	for !synAckReceived(clientCtx) {
+		sendSyn(clientCtx)
+	}
+
+	sendAck(clientCtx)
+	send(clientCtx)
 }
 
 func parseArgs(clientCtx *ClientCtx) {
