@@ -128,6 +128,9 @@ func receive(serverCtx *ServerCtx) {
 		fmt.Println("Received -> FIN with packet:", packetString(packet))
 		sendFinAck(serverCtx)
 	} else {
+
+		// if packet.Header.
+
 		fmt.Printf("Received -> %s with packet: %s", "packet.Data", packetString(packet))
 		send(serverCtx)
 	}
@@ -162,8 +165,13 @@ func waitForAck(serverCtx *ServerCtx) {
 
 	n, _, err := serverCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
-		fmt.Println(err)
-		cleanup(serverCtx)
+		if netError, ok := err.(net.Error); ok && netError.Timeout() {
+			fmt.Println("Timeout waiting for ACK -> restarting connection")
+			receive(serverCtx)
+		} else {
+			fmt.Println(err)
+			cleanup(serverCtx)
+		}
 	}
 
 	bytes := buffer[0:n]
@@ -180,7 +188,8 @@ func waitForAck(serverCtx *ServerCtx) {
 		fmt.Println("Received -> ACK with packet:", packetString(packet))
 		receive(serverCtx)
 	} else {
-		fmt.Println("The packet wasn't an ACK packet")
+		fmt.Println("The packet wasn't an ACK packet -> restarting connection")
+		receive(serverCtx)
 	}
 }
 
@@ -198,8 +207,6 @@ func bindSocket(serverCtx *ServerCtx) {
 	}
 
 	serverCtx.Socket = connection
-
-	receive(serverCtx)
 }
 
 func parseArgs(serverCtx *ServerCtx) {
@@ -211,10 +218,12 @@ func parseArgs(serverCtx *ServerCtx) {
 	serverCtx.Ip = os.Args[1]
 	serverCtx.Port = os.Args[2]
 
-	bindSocket(serverCtx)
+	fmt.Printf("The UDP server is %s:%s\n", serverCtx.Ip, serverCtx.Port)
 }
 
 func main() {
 	serverCtx := ServerCtx{}
 	parseArgs(&serverCtx)
+	bindSocket(&serverCtx)
+	receive(&serverCtx)
 }

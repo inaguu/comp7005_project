@@ -95,7 +95,8 @@ func waitForFinAck(clientCtx *ClientCtx) bool {
 	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			fmt.Println("Timeout")
+			fmt.Println("Timeout waiting for FIN/ACK")
+			return false
 		} else {
 			fmt.Println(err)
 			cleanup(clientCtx)
@@ -128,7 +129,7 @@ func sendFin(clientCtx *ClientCtx) {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: lastReceivedPacket.Header.Ack, Ack: lastSentPacket.Header.Ack + lastReceivedPacket.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: lastReceivedPacket.Header.Ack, Ack: lastSentPacket.Header.Ack, Len: 1},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -207,7 +208,7 @@ func send(clientCtx *ClientCtx) {
 		}
 
 		clientCtx.packetsSent = append(clientCtx.packetsSent, packet)
-		fmt.Printf("Sent -> %s with packet: %s", "clientCtx.Data", packetString(packet))
+		fmt.Printf("Sent -> %s with packet: %s", "No REPEAT", packetString(packet))
 
 		for !receive(clientCtx) {
 			_, err = clientCtx.Socket.Write(bytes)
@@ -215,6 +216,7 @@ func send(clientCtx *ClientCtx) {
 				fmt.Println(err)
 				cleanup(clientCtx)
 			}
+			fmt.Printf("Sent -> %s with packet: %s", "REPEAT", packetString(packet))
 		}
 	}
 }

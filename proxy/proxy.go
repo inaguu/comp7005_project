@@ -162,7 +162,7 @@ func bind_socket(proxyCtx *ProxyCtx) {
 	proxyCtx.ProxyAddress = s
 	proxyCtx.Socket = connection
 
-	fmt.Println("The UDP server is", proxyCtx.ProxyAddress)
+	fmt.Println("The proxy UDP server is", proxyCtx.ProxyAddress)
 
 	connectToServer(proxyCtx)
 }
