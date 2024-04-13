@@ -208,16 +208,16 @@ func send(clientCtx *ClientCtx) {
 	packets := buildPackets(clientCtx)
 
 	for _, packet := range packets {
+		lastReceivedPacket := clientCtx.packetsReceived[len(clientCtx.packetsReceived)-1]
+		lastSentPacket := clientCtx.packetsSent[len(clientCtx.packetsSent)-1]
+		packet.Header.Seq = lastReceivedPacket.Header.Ack
+		packet.Header.Ack = lastSentPacket.Header.Ack + lastReceivedPacket.Header.Len
+
 		bytes, err := utils.EncodePacket(packet)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-
-		lastReceivedPacket := clientCtx.packetsReceived[len(clientCtx.packetsReceived)-1]
-		lastSentPacket := clientCtx.packetsSent[len(clientCtx.packetsSent)-1]
-		packet.Header.Seq = lastReceivedPacket.Header.Ack
-		packet.Header.Ack = lastSentPacket.Header.Ack
 
 		_, err = clientCtx.Socket.Write(bytes)
 		if err != nil {

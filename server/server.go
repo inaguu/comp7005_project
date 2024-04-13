@@ -71,20 +71,18 @@ func sendFinAck(serverCtx *ServerCtx) {
 }
 
 func send(serverCtx *ServerCtx) {
+	lastPacketReceived := serverCtx.packetsReceived[len(serverCtx.packetsReceived)-1]
+	lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
+
 	packet := utils.Packet{
 		SrcAddr: serverCtx.Packet.SrcAddr,
 		DstAddr: serverCtx.Packet.DstAddr,
-		Header:  utils.Header{Flags: utils.Flags{SYN: true, ACK: true}, Seq: serverCtx.Packet.Header.Ack, Ack: serverCtx.Packet.Header.Seq + serverCtx.Packet.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{SYN: true, ACK: true}, Seq: lastPacketReceived.Header.Ack, Ack: lastPacketSent.Header.Ack + lastPacketReceived.Header.Len, Len: 1},
 	}
 
-	lastPacketReceived := serverCtx.packetsReceived[len(serverCtx.packetsReceived)-1]
-	lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
 	if lastPacketReceived.Header.Flags.SYN {
 		packet.Header.Ack = 1
 		packet.Header.Seq = 0
-	} else {
-		packet.Header.Ack = lastPacketSent.Header.Ack + lastPacketReceived.Header.Len
-		packet.Header.Seq = lastPacketReceived.Header.Ack
 	}
 
 	bytes, err := utils.EncodePacket(packet)
