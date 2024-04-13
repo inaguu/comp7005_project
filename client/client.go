@@ -21,7 +21,6 @@ type ClientCtx struct {
 
 	DataToSend                   []string
 	packetsSent, packetsReceived []utils.Packet
-	Packet                       utils.Packet
 }
 
 func buildPackets(clientCtx *ClientCtx) []utils.Packet {
@@ -52,7 +51,7 @@ func buildPacket(clientCtx *ClientCtx) []utils.Packet {
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
+		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: 0, Ack: 0, Len: uint32(len(clientCtx.Data))},
 		Data:    clientCtx.Data,
 	}
 
@@ -77,10 +76,13 @@ func cleanup(clientCtx *ClientCtx) {
 }
 
 func sendFinalAck(clientCtx *ClientCtx) {
+	lastReceivedPacket := clientCtx.packetsReceived[len(clientCtx.packetsReceived)-1]
+	lastSentPacket := clientCtx.packetsSent[len(clientCtx.packetsSent)-1]
+
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: lastReceivedPacket.Header.Ack, Ack: lastSentPacket.Header.Ack + lastReceivedPacket.Header.Len, Len: 1},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -119,7 +121,6 @@ func waitForFinAck(clientCtx *ClientCtx) {
 	}
 
 	clientCtx.packetsReceived = append(clientCtx.packetsReceived, packet)
-	clientCtx.Packet = packet
 
 	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
 		fmt.Println("Received -> FIN/ACK with packet:", packetString(packet))
@@ -130,10 +131,13 @@ func waitForFinAck(clientCtx *ClientCtx) {
 }
 
 func sendFin(clientCtx *ClientCtx) {
+	lastReceivedPacket := clientCtx.packetsReceived[len(clientCtx.packetsReceived)-1]
+	lastSentPacket := clientCtx.packetsSent[len(clientCtx.packetsSent)-1]
+
 	packet := utils.Packet{
 		SrcAddr: clientCtx.Address,
 		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{FIN: true}, Seq: lastReceivedPacket.Header.Ack, Ack: lastSentPacket.Header.Ack + lastReceivedPacket.Header.Len, Len: 1},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -177,7 +181,6 @@ func receive(clientCtx *ClientCtx) bool {
 	}
 
 	clientCtx.packetsReceived = append(clientCtx.packetsReceived, packet)
-	clientCtx.Packet = packet
 
 	lastPacketSent := clientCtx.packetsSent[len(clientCtx.packetsSent)-1]
 
@@ -264,7 +267,6 @@ func synAckReceived(clientCtx *ClientCtx) bool {
 	}
 
 	clientCtx.packetsReceived = append(clientCtx.packetsReceived, packet)
-	clientCtx.Packet = packet
 
 	if packet.Header.Flags.SYN && packet.Header.Flags.ACK {
 		fmt.Println("Received -> SYN/ACK with packet:", packetString(packet))
