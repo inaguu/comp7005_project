@@ -51,14 +51,10 @@ func receive(proxyCtx *ProxyCtx) {
 
 	proxyCtx.ClientAddress = addr
 
-	packet, _ := utils.DecodePacket(proxyCtx.Data)
-
 	if sendTo(fmt.Sprintf("%s:%d", addr.IP, addr.Port), fmt.Sprintf("%s:%d", proxyCtx.ServerAddress.IP, proxyCtx.ServerAddress.Port)) {
-		fmt.Println("Recieved from server:", packet)
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ServerDropChance {
-			fmt.Println("Packet Dropped")
 			receive(proxyCtx)
 		}
 
@@ -70,7 +66,6 @@ func receive(proxyCtx *ProxyCtx) {
 
 		sendToClient(proxyCtx)
 	} else {
-		fmt.Println("Recieved from client:", packet)
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ClientDropChance {

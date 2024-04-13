@@ -13,8 +13,11 @@ type Key int
 type ServerCtx struct {
 	Socket        *net.UDPConn
 	ClientAddress *net.UDPAddr
-	Ip, Port      string
-	Packet        utils.Packet
+
+	packetsSent, packetsReceived []utils.Packet
+
+	Ip, Port string
+	Packet   utils.Packet
 }
 
 const (
@@ -61,6 +64,7 @@ func sendFinAck(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
+	serverCtx.packetsSent = append(serverCtx.packetsSent, packet)
 	fmt.Println("Sent -> FIN/ACK with packet:", packetString(packet))
 
 	waitForAck(serverCtx)
@@ -71,6 +75,16 @@ func send(serverCtx *ServerCtx) {
 		SrcAddr: serverCtx.Packet.SrcAddr,
 		DstAddr: serverCtx.Packet.DstAddr,
 		Header:  utils.Header{Flags: utils.Flags{SYN: true, ACK: true}, Seq: serverCtx.Packet.Header.Ack, Ack: serverCtx.Packet.Header.Seq + serverCtx.Packet.Header.Len, Len: 1},
+	}
+
+	lastPacketReceived := serverCtx.packetsReceived[len(serverCtx.packetsReceived)-1]
+	lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
+	if lastPacketReceived.Header.Flags.SYN {
+		packet.Header.Ack = 1
+		packet.Header.Seq = 0
+	} else {
+		packet.Header.Ack = lastPacketSent.Header.Ack + lastPacketReceived.Header.Len
+		packet.Header.Seq = lastPacketReceived.Header.Ack
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -85,6 +99,7 @@ func send(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
+	serverCtx.packetsSent = append(serverCtx.packetsSent, packet)
 	fmt.Println("\nSend -> ACK with packet:", packetString(packet))
 
 	receive(serverCtx)
@@ -107,6 +122,7 @@ func receive(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
+	serverCtx.packetsReceived = append(serverCtx.packetsReceived, packet)
 	serverCtx.ClientAddress = addr
 	serverCtx.Packet = packet
 
@@ -117,7 +133,7 @@ func receive(serverCtx *ServerCtx) {
 		fmt.Println("Received -> FIN with packet:", packetString(packet))
 		sendFinAck(serverCtx)
 	} else {
-		fmt.Printf("Received -> %s with packet: %s", packet.Data, packetString(packet))
+		fmt.Printf("Received -> %s with packet: %s", "packet.Data", packetString(packet))
 		send(serverCtx)
 	}
 }
@@ -141,6 +157,7 @@ func sendSynAck(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
+	serverCtx.packetsSent = append(serverCtx.packetsSent, packet)
 	fmt.Println("Sent -> SYN/ACK with packet:", packetString(packet))
 	waitForAck(serverCtx)
 }
@@ -161,6 +178,8 @@ func waitForAck(serverCtx *ServerCtx) {
 		fmt.Println(err)
 		cleanup(serverCtx)
 	}
+
+	serverCtx.packetsReceived = append(serverCtx.packetsReceived, packet)
 
 	if packet.Header.Flags.ACK {
 		fmt.Println("Received -> ACK with packet:", packetString(packet))
