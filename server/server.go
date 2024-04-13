@@ -85,17 +85,6 @@ func send(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
-	// rand.Seed(time.Now().Unix())
-
-	// data := []byte(strconv.Itoa(random(1, 1001)))
-	// fmt.Printf("Sent: %s\n", string(data))
-
-	// _, err := serverCtx.Socket.WriteToUDP(data, serverCtx.ClientAddress)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	cleanup(serverCtx)
-	// }
-
 	fmt.Println("\nSend -> ACK with packet:", packetString(packet))
 
 	receive(serverCtx)

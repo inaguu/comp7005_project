@@ -31,11 +31,23 @@ func buildPackets(clientCtx *ClientCtx) []utils.Packet {
 			Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
 			Data:    clientCtx.DataToSend[i],
 		}
-
 		packets = append(packets, packet)
 	}
 
 	return packets
+}
+
+func buildPacket(clientCtx *ClientCtx) []utils.Packet {
+	var packets []utils.Packet
+
+	packet := utils.Packet{
+		SrcAddr: clientCtx.Address,
+		DstAddr: clientCtx.Socket.LocalAddr().String(),
+		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: clientCtx.Packet.Header.Ack, Ack: clientCtx.Packet.Header.Seq + clientCtx.Packet.Header.Len + 1, Len: uint32(len(clientCtx.Data))},
+		Data:    clientCtx.Data,
+	}
+
+	return append(packets, packet)
 }
 
 func packetString(packet utils.Packet) string {
@@ -163,17 +175,27 @@ func receive(clientCtx *ClientCtx) bool {
 	return false
 }
 
-func splitData(clientCtx *ClientCtx) {
-	if (len(clientCtx.Data)) > 512 {
-		clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[0:512])
-		clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[512:1024])
+func splitData(clientCtx *ClientCtx) []utils.Packet {
+	fmt.Println(len(clientCtx.Data) / 512)
+	start := 0
+	end := 512
+	for i := 0; i < len(clientCtx.Data)/512; i++ {
+		clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[start:end])
+		start += 512
+		end += 512
 	}
+	clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[start:len(clientCtx.Data)])
+	return buildPackets(clientCtx)
 }
 
 func send(clientCtx *ClientCtx) {
-	splitData(clientCtx)
+	var packets []utils.Packet
 
-	packets := buildPackets(clientCtx)
+	if len(clientCtx.Data) > 512 {
+		packets = splitData(clientCtx)
+	} else {
+		packets = buildPacket(clientCtx)
+	}
 
 	for _, packet := range packets {
 		bytes, err := utils.EncodePacket(packet)
@@ -188,7 +210,7 @@ func send(clientCtx *ClientCtx) {
 			cleanup(clientCtx)
 		}
 
-		fmt.Printf("Sent -> %s with packet: %s", clientCtx.Data, packetString(packet))
+		fmt.Printf("Sent -> %s with packet: %s", "clientCtx.Data", packetString(packet))
 
 		for !receive(clientCtx) {
 			_, err = clientCtx.Socket.Write(bytes)
