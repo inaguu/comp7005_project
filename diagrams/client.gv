@@ -1,0 +1,48 @@
+digraph Client {
+  node [shape = circle; fontsize = 15; width = 1; height = 1;];
+  edge [fontsize = 15;];
+  
+  rankdir = "";
+  
+  // States
+  Start;
+  Parse_Args;
+  Read_File;
+  Socket_Connected;
+  SYN_Sent;
+  Wait_For_SYN_ACK;
+  Send_Ack;
+  Established;
+  Send;
+  Receive;
+  Retransmit;
+  Next;
+  Packet;
+  Fin_Sent;
+  Wait_For_FIN_ACK;
+  Closed;
+  Cleanup;
+  Exit;
+  
+  // Transitions
+  Start -> Parse_Args [label = "parseArgs()";];
+  Parse_Args -> Read_File [label = "readFile()";];
+  Read_File -> Socket_Connected [label = "bindSocket()";];
+  Socket_Connected -> SYN_Sent [label = "sendSyn()";];
+  
+  SYN_Sent -> Wait_For_SYN_ACK;
+  Wait_For_SYN_ACK -> Wait_For_SYN_ACK [label = "timeout no SYN/ACK | sendSyn()";];
+  Wait_For_SYN_ACK -> Send_Ack [label = "sendAck()";];
+  Send_Ack -> Established;
+  
+  Established -> Send [label = "send()";];
+  Send -> Receive;
+  Receive -> Retransmit;
+  Receive -> Next [label = "move to next packet";];
+  Retransmit -> Next;
+  Retransmit -> Retransmit [label = "timeout not ACK";];
+  Next -> Send;
+  
+  Parse_Args -> Exit [label = "bad input";];
+  Read_File -> Exit [label = "readFile() err";];
+}
