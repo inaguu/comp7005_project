@@ -55,16 +55,21 @@ func receive(proxyCtx *ProxyCtx) {
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ServerDropChance {
+			fmt.Println("Packet dropped")
 			receive(proxyCtx)
 		}
 
 		delayChance := rand.Intn(100)
 		if delayChance < proxyCtx.ServerDelayChance {
-			fmt.Println("Packet Delayed")
-			time.Sleep(5 * time.Second)
+			go func() {
+				fmt.Println("Packet Delayed")
+				time.Sleep(5 * time.Second)
+				sendToClient(proxyCtx)
+			}()
+		} else {
+			sendToClient(proxyCtx)
 		}
 
-		sendToClient(proxyCtx)
 	} else {
 		dropChance := rand.Intn(100)
 
@@ -75,18 +80,15 @@ func receive(proxyCtx *ProxyCtx) {
 
 		delayChance := rand.Intn(100)
 		if delayChance < proxyCtx.ClientDelayChance {
-			fmt.Println("Packet Delayed")
-			time.Sleep(5 * time.Second)
+			go func() {
+				fmt.Println("Packet Delayed")
+				time.Sleep(5 * time.Second)
+				sendToServer(proxyCtx)
+			}()
+		} else {
+			sendToServer(proxyCtx)
 		}
-
-		sendToServer(proxyCtx)
 	}
-}
-
-func dropPacket(proxyCtx *ProxyCtx) {
-}
-
-func delayPacket(proxyCtx *ProxyCtx) {
 }
 
 func sendTo(ip string, server string) bool {
