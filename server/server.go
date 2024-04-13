@@ -8,8 +8,6 @@ import (
 	"os"
 )
 
-type Key int
-
 type ServerCtx struct {
 	Socket        *net.UDPConn
 	ClientAddress *net.UDPAddr
@@ -21,8 +19,7 @@ type ServerCtx struct {
 }
 
 const (
-	INPUT_ERROR     = "Usage: <filename> <ip address> <port_number>"
-	ServerKey   Key = 0
+	INPUT_ERROR = "Usage: <filename> <ip address> <port_number>"
 )
 
 func packetString(packet utils.Packet) string {

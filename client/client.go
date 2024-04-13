@@ -9,10 +9,6 @@ import (
 	"time"
 )
 
-type Key int
-
-const ClientKey Key = 0
-
 type ClientCtx struct {
 	Socket   *net.UDPConn
 	Address  string
@@ -43,19 +39,6 @@ func buildPackets(clientCtx *ClientCtx) []utils.Packet {
 	}
 
 	return packets
-}
-
-func buildPacket(clientCtx *ClientCtx) []utils.Packet {
-	var packets []utils.Packet
-
-	packet := utils.Packet{
-		SrcAddr: clientCtx.Address,
-		DstAddr: clientCtx.Socket.LocalAddr().String(),
-		Header:  utils.Header{Flags: utils.Flags{PSH: true, ACK: true}, Seq: 0, Ack: 0, Len: uint32(len(clientCtx.Data))},
-		Data:    clientCtx.Data,
-	}
-
-	return append(packets, packet)
 }
 
 func packetString(packet utils.Packet) string {
@@ -192,19 +175,6 @@ func receive(clientCtx *ClientCtx) bool {
 		fmt.Println("\nDid not receive ACK packet")
 	}
 	return false
-}
-
-func splitData(clientCtx *ClientCtx) []utils.Packet {
-	fmt.Println(len(clientCtx.Data) / 512)
-	start := 0
-	end := 512
-	for i := 0; i < len(clientCtx.Data)/512; i++ {
-		clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[start:end])
-		start += 512
-		end += 512
-	}
-	clientCtx.DataToSend = append(clientCtx.DataToSend, clientCtx.Data[start:len(clientCtx.Data)])
-	return buildPackets(clientCtx)
 }
 
 func send(clientCtx *ClientCtx) {

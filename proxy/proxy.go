@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-type Key int
-
-const ProxyKey Key = 0
-
 type ProxyCtx struct {
 	Socket                 *net.UDPConn
 	ClientAddress          *net.UDPAddr
