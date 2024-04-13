@@ -86,13 +86,20 @@ func sendFinalAck(clientCtx *ClientCtx) {
 	cleanup(clientCtx)
 }
 
-func waitForFinAck(clientCtx *ClientCtx) {
+func waitForFinAck(clientCtx *ClientCtx) bool {
 	buffer := make([]byte, 1024)
+
+	deadline := time.Now().Add(10 * time.Second)
+	clientCtx.Socket.SetReadDeadline(deadline)
 
 	n, _, err := clientCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
-		fmt.Println(err)
-		cleanup(clientCtx)
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			fmt.Println("Timeout")
+		} else {
+			fmt.Println(err)
+			cleanup(clientCtx)
+		}
 	}
 
 	bytes := buffer[0:n]
@@ -107,10 +114,11 @@ func waitForFinAck(clientCtx *ClientCtx) {
 
 	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
 		fmt.Println("Received -> FIN/ACK with packet:", packetString(packet))
-		sendFinalAck(clientCtx)
+		return true
 	} else {
 		fmt.Println("The packet wasn't a FIN/ACK")
 	}
+	return false
 }
 
 func sendFin(clientCtx *ClientCtx) {
@@ -321,7 +329,10 @@ func bindSocket(clientCtx *ClientCtx) {
 
 func terminateConnection(clientCtx *ClientCtx) {
 	sendFin(clientCtx)
-	waitForFinAck(clientCtx)
+	for !waitForFinAck(clientCtx) {
+		sendFin(clientCtx)
+	}
+	sendFinalAck(clientCtx)
 }
 
 func establishConnection(clientCtx *ClientCtx) {
