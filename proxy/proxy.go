@@ -41,6 +41,20 @@ func cleanup(proxyCtx *ProxyCtx) {
 	exit(proxyCtx)
 }
 
+func dropPacket(dropChance int) bool {
+	chance := rand.Intn(100)
+	return chance < dropChance
+}
+
+func delayPacket(delayChance int) bool {
+	chance := rand.Intn(100)
+	return chance < delayChance
+}
+
+func randRange(min int, max int) int {
+	return rand.Intn(max+1-min) + min
+}
+
 func receive(proxyCtx *ProxyCtx) {
 	buffer := make([]byte, 1024)
 	n, addr, err := proxyCtx.Socket.ReadFromUDP(buffer)
@@ -53,7 +67,7 @@ func receive(proxyCtx *ProxyCtx) {
 
 	packet, _ := utils.DecodePacket(proxyCtx.Data)
 
-	if sendTo(fmt.Sprintf("%s:%d", addr.IP, addr.Port), fmt.Sprintf("%s:%d", proxyCtx.ServerAddress.IP, proxyCtx.ServerAddress.Port)) {
+	if sendTo(addr.String(), proxyCtx.ServerAddress.String()) {
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ServerDropChance {
@@ -63,9 +77,10 @@ func receive(proxyCtx *ProxyCtx) {
 
 		delayChance := rand.Intn(100)
 		if delayChance < proxyCtx.ServerDelayChance {
-			fmt.Println("Packet Delayed from server:", packetString(packet))
+			delayTime := randRange(proxyCtx.ServerDelayMin, proxyCtx.ServerDelayMax)
+			fmt.Printf("Packet Delayed from server for %d ms: %s\n", delayTime, packetString(packet))
 			go func() {
-				time.Sleep(5 * time.Second)
+				time.Sleep(time.Duration(delayTime) * time.Millisecond)
 				sendToClient(proxyCtx)
 			}()
 			receive(proxyCtx)
@@ -83,9 +98,10 @@ func receive(proxyCtx *ProxyCtx) {
 
 		delayChance := rand.Intn(100)
 		if delayChance < proxyCtx.ClientDelayChance {
-			fmt.Println("Packet Delayed from client:", packetString(packet))
+			delayTime := randRange(proxyCtx.ClientDelayMin, proxyCtx.ClientDelayMax)
+			fmt.Printf("Packet Delayed from client for %d ms: %s\n", delayTime, packetString(packet))
 			go func() {
-				time.Sleep(5 * time.Second)
+				time.Sleep(time.Duration(delayTime) * time.Millisecond)
 				sendToServer(proxyCtx)
 			}()
 			receive(proxyCtx)
