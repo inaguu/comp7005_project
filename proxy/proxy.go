@@ -152,7 +152,7 @@ func connectToServer(proxyCtx *ProxyCtx) {
 }
 
 // both
-func bind_socket(proxyCtx *ProxyCtx) {
+func bindSocket(proxyCtx *ProxyCtx) {
 	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", proxyCtx.SIp, proxyCtx.SPort))
 	if err != nil {
 		fmt.Println(err)
@@ -197,8 +197,28 @@ func usage() {
 	flag.PrintDefaults()
 }
 
-func checkArgs(proxyCtx *ProxyCtx) {
+func checkAddresses(proxyCtx *ProxyCtx) {
 	errorString := ""
+
+	proxyAddress := utils.Address(proxyCtx.SIp, proxyCtx.SPort)
+	serverAddress := utils.Address(proxyCtx.DIp, proxyCtx.DPort)
+
+	if proxyAddress == "" {
+		errorString = fmt.Sprintf("%s and %s for proxy is not a valid ip and port combination", proxyCtx.SIp, proxyCtx.SPort)
+	} else if serverAddress == "" {
+		errorString = fmt.Sprintf("%s and %s for server is not a valid ip and port combination", proxyCtx.SIp, proxyCtx.SPort)
+	}
+
+	if errorString != "" {
+		fmt.Fprintf(flag.CommandLine.Output(), "%s\n", errorString)
+		usage()
+		exit(proxyCtx)
+	}
+}
+
+func checkFlags(proxyCtx *ProxyCtx) {
+	errorString := ""
+
 	if proxyCtx.ClientDropChance < 0 || proxyCtx.ClientDropChance > 100 {
 		errorString = "-cdrop must be an integer from 0 to 100"
 	} else if proxyCtx.ServerDropChance < 0 || proxyCtx.ServerDropChance > 100 {
@@ -220,6 +240,11 @@ func checkArgs(proxyCtx *ProxyCtx) {
 	}
 }
 
+func checkArgs(proxyCtx *ProxyCtx) {
+	checkFlags(proxyCtx)
+	checkAddresses(proxyCtx)
+}
+
 func parseArgs(proxyCtx *ProxyCtx) {
 	clientDropChance := flag.Int("cdrop", 0, "% drop chance for packets coming from client (0 - 100)")
 	serverDropChance := flag.Int("sdrop", 0, "% drop chance for packets comming from server (0 - 100)")
@@ -236,6 +261,7 @@ func parseArgs(proxyCtx *ProxyCtx) {
 	flag.Parse()
 
 	if len(flag.Args()) < 4 {
+		fmt.Fprintln(flag.CommandLine.Output(), "not enough arguments")
 		usage()
 		exit(proxyCtx)
 	}
@@ -257,8 +283,7 @@ func parseArgs(proxyCtx *ProxyCtx) {
 	proxyCtx.ServerDelayMax = *serverDelayMax
 
 	checkArgs(proxyCtx)
-
-	bind_socket(proxyCtx)
+	bindSocket(proxyCtx)
 }
 
 func main() {
