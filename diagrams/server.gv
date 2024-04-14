@@ -1,0 +1,37 @@
+digraph Server {
+  node [shape = circle; fontsize = 15; width = 1; height = 1;];
+  edge [fontsize = 15;];
+  
+  rankdir = "LR";
+  
+  // States
+  Start [label = "Start";];
+  Parse_Args [label = "Parse Args";];
+  Socket_Binded [label = "Socket Binded";];
+  Receive [label = "Receive";];
+  SYN_ACK_SENT [label = "SYN/ACK Sent";];
+  FIN_ACK_SENT [label = "FIN/ACK Sent";];
+  ACK_SENT [label = "ACK Sent";];
+  
+  Exit [label = "Exit";];
+  
+  
+  Start -> Parse_Args [label = "parseArgs()";];
+  Parse_Args -> Socket_Binded [label = "bindSocket()";];
+  Socket_Binded -> Receive [label = "receive()";];
+  
+  Receive -> SYN_ACK_SENT [label = "SYN received | sendSynAck()";];
+  SYN_ACK_SENT -> SYN_ACK_SENT [label = "timeout no ACK | sendSynAck()";];
+  SYN_ACK_SENT -> Receive [label = "ACK received | receive()";];
+  
+  Receive -> FIN_ACK_SENT [label = "FIN received | sendFinAck()";];
+  FIN_ACK_SENT -> FIN_ACK_SENT [label = "timeout no ACK | sendFinAck()";];
+  FIN_ACK_SENT -> Receive [label = "ACK received | receive()";];
+  
+  Receive -> ACK_SENT [label = "Data received | sendAck()";];
+  
+  Socket_Binded -> Cleanup [label = "bindSocket() err | cleanup()";];
+  Receive -> Cleanup [label = "read err | cleanup()";];
+  
+  Cleanup -> Exit [label = "exit()";];
+}
