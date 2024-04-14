@@ -254,19 +254,26 @@ func waitForAck(serverCtx *ServerCtx) {
 }
 
 func bindSocket(serverCtx *ServerCtx) {
-	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", serverCtx.Ip, serverCtx.Port))
+	s, err := net.ResolveUDPAddr("udp", utils.Address(serverCtx.Ip, serverCtx.Port))
 	if err != nil {
 		fmt.Println(err)
 		exit(serverCtx)
 	}
 
-	connection, err := net.ListenUDP("udp4", s)
+	connection, err := net.ListenUDP("udp", s)
 	if err != nil {
 		fmt.Println(err)
 		exit(serverCtx)
 	}
 
 	serverCtx.Socket = connection
+}
+
+func checkArgs(serverCtx *ServerCtx) {
+	if utils.Address(serverCtx.Ip, serverCtx.Port) == "" {
+		fmt.Printf("%s and %s is not a valid ip and port combination", serverCtx.Ip, serverCtx.Port)
+		exit(serverCtx)
+	}
 }
 
 func parseArgs(serverCtx *ServerCtx) {
@@ -278,7 +285,9 @@ func parseArgs(serverCtx *ServerCtx) {
 	serverCtx.Ip = os.Args[1]
 	serverCtx.Port = os.Args[2]
 
-	fmt.Printf("The UDP server is %s:%s\n", serverCtx.Ip, serverCtx.Port)
+	checkArgs(serverCtx)
+
+	fmt.Printf("The UDP server is %s\n", utils.Address(serverCtx.Ip, serverCtx.Port))
 }
 
 func main() {

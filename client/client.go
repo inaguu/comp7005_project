@@ -12,10 +12,10 @@ import (
 const CLIENT_DELAY_SECONDS int = 10
 
 type ClientCtx struct {
-	Socket   *net.UDPConn
-	Address  string
-	FilePath string
-	Data     string
+	Socket            *net.UDPConn
+	Address, Ip, Port string
+	FilePath          string
+	Data              string
 
 	DataToSend                   []string
 	packetsSent, packetsReceived []utils.Packet
@@ -204,8 +204,8 @@ func readFile(clientCtx *ClientCtx) {
 }
 
 func bindSocket(clientCtx *ClientCtx) {
-	s, _ := net.ResolveUDPAddr("udp4", clientCtx.Address)
-	c, err := net.DialUDP("udp4", nil, s)
+	s, _ := net.ResolveUDPAddr("udp", utils.Address(clientCtx.Ip, clientCtx.Port))
+	c, err := net.DialUDP("udp", nil, s)
 	if err != nil {
 		fmt.Println(err)
 		exit(clientCtx)
@@ -271,14 +271,27 @@ func establishConnection(clientCtx *ClientCtx) {
 	fmt.Println("Connection Established")
 }
 
-func parseArgs(clientCtx *ClientCtx) {
-	arguments := os.Args
-	if len(arguments) == 1 {
-		fmt.Println("Please provide a host:port string")
+func checkArgs(clientCtx *ClientCtx) {
+	address := utils.Address(clientCtx.Ip, clientCtx.Port)
+	if address == "" {
+		fmt.Printf("%s and %s is not a valid ip and port combination\n", clientCtx.Ip, clientCtx.Port)
 		exit(clientCtx)
 	}
-	clientCtx.Address = os.Args[1]
-	clientCtx.FilePath = os.Args[2]
+	clientCtx.Address = address
+}
+
+func parseArgs(clientCtx *ClientCtx) {
+	arguments := os.Args
+	if len(arguments) < 4 {
+		fmt.Println("Not enough arguments")
+		exit(clientCtx)
+	}
+
+	clientCtx.Ip = os.Args[1]
+	clientCtx.Port = os.Args[2]
+	clientCtx.FilePath = os.Args[3]
+
+	checkArgs(clientCtx)
 }
 
 func main() {

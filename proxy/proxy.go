@@ -150,14 +150,14 @@ func sendToServer(proxyCtx *ProxyCtx) {
 }
 
 func connectToServer(proxyCtx *ProxyCtx) {
-	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", proxyCtx.DIp, proxyCtx.DPort))
+	s, err := net.ResolveUDPAddr("udp", utils.Address(proxyCtx.DIp, proxyCtx.DPort))
 	if err != nil {
 		fmt.Println(err)
 		exit(proxyCtx)
 	}
 
 	proxyCtx.ServerAddress = s
-	_, err = net.DialUDP("udp4", nil, s)
+	_, err = net.DialUDP("udp", nil, s)
 	if err != nil {
 		cleanup(proxyCtx)
 	}
@@ -169,13 +169,13 @@ func connectToServer(proxyCtx *ProxyCtx) {
 
 // both
 func bindSocket(proxyCtx *ProxyCtx) {
-	s, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("%s:%s", proxyCtx.SIp, proxyCtx.SPort))
+	s, err := net.ResolveUDPAddr("udp", utils.Address(proxyCtx.SIp, proxyCtx.SPort))
 	if err != nil {
 		fmt.Println(err)
 		exit(proxyCtx)
 	}
 
-	connection, err := net.ListenUDP("udp4", s)
+	connection, err := net.ListenUDP("udp", s)
 	if err != nil {
 		fmt.Println(err)
 		exit(proxyCtx)
