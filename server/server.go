@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const SERVER_DELAY_SECONDS int = 5
+
 type ServerCtx struct {
 	Socket        *net.UDPConn
 	ClientAddress *net.UDPAddr
@@ -107,7 +109,7 @@ func receive(serverCtx *ServerCtx) {
 	buffer := make([]byte, 1024)
 
 	if serverCtx.Timeout {
-		deadline := time.Now().Add(10 * time.Second)
+		deadline := time.Now().Add(time.Duration(SERVER_DELAY_SECONDS) * time.Second)
 		serverCtx.Socket.SetReadDeadline(deadline)
 	}
 
@@ -185,7 +187,7 @@ func sendSynAck(serverCtx *ServerCtx) {
 	packet := utils.Packet{
 		SrcAddr: serverCtx.Packet.SrcAddr,
 		DstAddr: serverCtx.Packet.DstAddr,
-		Header:  utils.Header{Flags: utils.Flags{SYN: true, ACK: true}, Seq: 0, Ack: 1, Len: 0},
+		Header:  utils.Header{Flags: utils.Flags{SYN: true, ACK: true}, Seq: 0, Ack: 1, Len: 1},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -208,7 +210,7 @@ func sendSynAck(serverCtx *ServerCtx) {
 func waitForAck(serverCtx *ServerCtx) {
 	buffer := make([]byte, 1024)
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(time.Duration(SERVER_DELAY_SECONDS) * time.Second)
 	serverCtx.Socket.SetReadDeadline(deadline)
 
 	n, _, err := serverCtx.Socket.ReadFromUDP(buffer)
@@ -247,6 +249,7 @@ func waitForAck(serverCtx *ServerCtx) {
 		receive(serverCtx)
 	} else {
 		fmt.Println("The packet wasn't an ACK packet")
+		waitForAck(serverCtx)
 	}
 }
 
