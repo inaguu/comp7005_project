@@ -3,7 +3,7 @@ package utils
 import (
 	"bytes"
 	"encoding/gob"
-	"fmt"
+	"net"
 )
 
 type Flags struct {
@@ -44,5 +44,16 @@ func DecodePacket(encoded []byte) (Packet, error) {
 }
 
 func Address(ip string, port string) string {
-	return fmt.Sprintf("%s:%s", ip, port)
+	unparsedIp := ip
+	if ip == "localhost" {
+		unparsedIp = "127.0.0.1"
+	}
+
+	parsedIp := net.ParseIP(unparsedIp)
+
+	if parsedIp == nil {
+		return ""
+	}
+
+	return net.JoinHostPort(parsedIp.String(), port)
 }
