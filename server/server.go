@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"time"
 )
 
 type ServerCtx struct {
@@ -16,6 +17,8 @@ type ServerCtx struct {
 
 	Ip, Port string
 	Packet   utils.Packet
+
+	Timeout bool
 }
 
 const (
@@ -62,7 +65,7 @@ func sendFinAck(serverCtx *ServerCtx) {
 	}
 
 	serverCtx.packetsSent = append(serverCtx.packetsSent, packet)
-	fmt.Println("Sent -> FIN/ACK with packet:", packetString(packet))
+	fmt.Println("Send -> FIN/ACK with packet:", packetString(packet))
 
 	waitForAck(serverCtx)
 }
@@ -74,7 +77,7 @@ func send(serverCtx *ServerCtx) {
 	packet := utils.Packet{
 		SrcAddr: serverCtx.Packet.SrcAddr,
 		DstAddr: serverCtx.Packet.DstAddr,
-		Header:  utils.Header{Flags: utils.Flags{SYN: true, ACK: true}, Seq: lastPacketReceived.Header.Ack, Ack: lastPacketSent.Header.Ack + lastPacketReceived.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: lastPacketReceived.Header.Ack, Ack: lastPacketSent.Header.Ack + lastPacketReceived.Header.Len, Len: 1},
 	}
 
 	if lastPacketReceived.Header.Flags.SYN {
@@ -103,10 +106,25 @@ func send(serverCtx *ServerCtx) {
 func receive(serverCtx *ServerCtx) {
 	buffer := make([]byte, 1024)
 
+	if serverCtx.Timeout {
+		deadline := time.Now().Add(10 * time.Second)
+		serverCtx.Socket.SetReadDeadline(deadline)
+	}
+
 	n, addr, err := serverCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
-		fmt.Println(err)
-		cleanup(serverCtx)
+		if serverCtx.Timeout {
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				fmt.Println("Timeout waiting for PSH/ACK")
+				sendLastPacket(serverCtx)
+			} else {
+				fmt.Println(err)
+				cleanup(serverCtx)
+			}
+		} else {
+			fmt.Println(err)
+			cleanup(serverCtx)
+		}
 	}
 
 	bytes := buffer[0:n]
@@ -127,12 +145,39 @@ func receive(serverCtx *ServerCtx) {
 	} else if packet.Header.Flags.FIN {
 		fmt.Println("Received -> FIN with packet:", packetString(packet))
 		sendFinAck(serverCtx)
-	} else {
-
-		// if packet.Header.
-
+	} else if packet.Header.Flags.PSH && packet.Header.Flags.ACK {
 		fmt.Printf("Received -> %s with packet: %s", "packet.Data", packetString(packet))
+		serverCtx.Timeout = true
 		send(serverCtx)
+	}
+}
+
+func sendLastPacket(serverCtx *ServerCtx) {
+	lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
+
+	bytes, err := utils.EncodePacket(lastPacketSent)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	_, err = serverCtx.Socket.WriteToUDP(bytes, serverCtx.ClientAddress)
+	if err != nil {
+		fmt.Println(err)
+		cleanup(serverCtx)
+	}
+
+	serverCtx.packetsSent = append(serverCtx.packetsSent, lastPacketSent)
+
+	if lastPacketSent.Header.Flags.ACK && lastPacketSent.Header.Flags.FIN {
+		fmt.Println("Re-Send -> FIN/ACK with packet: ", packetString(lastPacketSent))
+		waitForAck(serverCtx)
+	} else if lastPacketSent.Header.Flags.ACK && lastPacketSent.Header.Flags.SYN {
+		fmt.Println("Re-Send -> SYN/ACK with packet: ", packetString(lastPacketSent))
+		waitForAck(serverCtx)
+	} else {
+		fmt.Println("Re-Send -> ACK with packet: ", packetString(lastPacketSent))
+		receive(serverCtx)
 	}
 }
 
@@ -156,18 +201,21 @@ func sendSynAck(serverCtx *ServerCtx) {
 	}
 
 	serverCtx.packetsSent = append(serverCtx.packetsSent, packet)
-	fmt.Println("Sent -> SYN/ACK with packet:", packetString(packet))
+	fmt.Println("Send -> SYN/ACK with packet:", packetString(packet))
 	waitForAck(serverCtx)
 }
 
 func waitForAck(serverCtx *ServerCtx) {
 	buffer := make([]byte, 1024)
 
+	deadline := time.Now().Add(10 * time.Second)
+	serverCtx.Socket.SetReadDeadline(deadline)
+
 	n, _, err := serverCtx.Socket.ReadFromUDP(buffer)
 	if err != nil {
 		if netError, ok := err.(net.Error); ok && netError.Timeout() {
-			fmt.Println("Timeout waiting for ACK -> restarting connection")
-			receive(serverCtx)
+			fmt.Println("Timeout waiting for ACK -> re-sending packet")
+			sendLastPacket(serverCtx)
 		} else {
 			fmt.Println(err)
 			cleanup(serverCtx)
@@ -182,14 +230,23 @@ func waitForAck(serverCtx *ServerCtx) {
 		cleanup(serverCtx)
 	}
 
+	lastPacketReceived := serverCtx.packetsReceived[len(serverCtx.packetsReceived)-1]
 	serverCtx.packetsReceived = append(serverCtx.packetsReceived, packet)
 
-	if packet.Header.Flags.ACK {
+	if packet.Header.Flags.ACK && lastPacketReceived.Header.Flags.SYN {
 		fmt.Println("Received -> ACK with packet:", packetString(packet))
+		fmt.Println("Connection established")
+		serverCtx.Timeout = false
+		serverCtx.Socket.SetReadDeadline(time.Time{})
+		receive(serverCtx)
+	} else if packet.Header.Flags.ACK && lastPacketReceived.Header.Flags.FIN {
+		fmt.Println("Received -> ACK with packet:", packetString(packet))
+		fmt.Println("Connection terminated")
+		serverCtx.Timeout = false
+		serverCtx.Socket.SetReadDeadline(time.Time{})
 		receive(serverCtx)
 	} else {
-		fmt.Println("The packet wasn't an ACK packet -> restarting connection")
-		receive(serverCtx)
+		fmt.Println("The packet wasn't an ACK packet")
 	}
 }
 
