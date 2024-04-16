@@ -22,6 +22,9 @@ type ProxyCtx struct {
 	ClientDelayChance, ServerDelayChance int
 	ClientDelayMin, ClientDelayMax       int
 	ServerDelayMin, ServerDelayMax       int
+
+	ClientPackets []utils.Packet
+	ServerPackets []utils.Packet
 }
 
 func packetString(packet utils.Packet) string {
@@ -67,7 +70,12 @@ func receive(proxyCtx *ProxyCtx) {
 
 	packet, _ := utils.DecodePacket(proxyCtx.Data)
 
+	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
+		utils.GenerateGraph()
+	}
+
 	if sendTo(addr.String(), proxyCtx.ServerAddress.String()) {
+		proxyCtx.ServerPackets = append(proxyCtx.ServerPackets, packet)
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ServerDropChance {
@@ -89,6 +97,7 @@ func receive(proxyCtx *ProxyCtx) {
 		}
 
 	} else {
+		proxyCtx.ClientPackets = append(proxyCtx.ClientPackets, packet)
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ClientDropChance {
