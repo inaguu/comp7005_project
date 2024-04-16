@@ -51,7 +51,7 @@ func sendFinAck(serverCtx *ServerCtx) {
 	packet := utils.Packet{
 		SrcAddr: serverCtx.Packet.SrcAddr,
 		DstAddr: serverCtx.Packet.DstAddr,
-		Header:  utils.Header{Flags: utils.Flags{FIN: true, ACK: true}, Seq: serverCtx.Packet.Header.Ack, Ack: serverCtx.Packet.Header.Seq + serverCtx.Packet.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{FIN: true, ACK: true}, Seq: serverCtx.Packet.Header.Ack, Ack: serverCtx.Packet.Header.Seq + serverCtx.Packet.Header.Len, Len: 0},
 	}
 
 	bytes, err := utils.EncodePacket(packet)
@@ -119,6 +119,7 @@ func receive(serverCtx *ServerCtx) {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				fmt.Println("Timeout waiting for PSH/ACK")
 				sendLastPacket(serverCtx)
+				receive(serverCtx)
 			} else {
 				fmt.Println(err)
 				cleanup(serverCtx)
@@ -160,7 +161,7 @@ func sendLastPacket(serverCtx *ServerCtx) {
 	bytes, err := utils.EncodePacket(lastPacketSent)
 	if err != nil {
 		fmt.Println(err)
-		return
+		cleanup(serverCtx)
 	}
 
 	_, err = serverCtx.Socket.WriteToUDP(bytes, serverCtx.ClientAddress)
