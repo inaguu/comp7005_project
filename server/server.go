@@ -21,6 +21,9 @@ type ServerCtx struct {
 	Packet   utils.Packet
 
 	Timeout bool
+
+	EstablishCount   int
+	TerminationCount int
 }
 
 const (
@@ -74,12 +77,12 @@ func sendFinAck(serverCtx *ServerCtx) {
 
 func send(serverCtx *ServerCtx) {
 	lastPacketReceived := serverCtx.packetsReceived[len(serverCtx.packetsReceived)-1]
-	lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
+	// lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
 
 	packet := utils.Packet{
 		SrcAddr: serverCtx.Packet.SrcAddr,
 		DstAddr: serverCtx.Packet.DstAddr,
-		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: lastPacketReceived.Header.Ack, Ack: lastPacketSent.Header.Ack + lastPacketReceived.Header.Len, Len: 1},
+		Header:  utils.Header{Flags: utils.Flags{ACK: true}, Seq: lastPacketReceived.Header.Ack, Ack: lastPacketReceived.Header.Seq + lastPacketReceived.Header.Len, Len: 1},
 	}
 
 	if lastPacketReceived.Header.Flags.SYN {
@@ -189,9 +192,25 @@ func sendLastPacket(serverCtx *ServerCtx) {
 
 	if lastPacketSent.Header.Flags.ACK && lastPacketSent.Header.Flags.FIN {
 		fmt.Println("Re-Send -> FIN/ACK with packet: ", packetString(lastPacketSent))
+		serverCtx.TerminationCount++
+		if serverCtx.TerminationCount >= 7 {
+			fmt.Println("Passed FIN/ACK resending limit")
+			fmt.Println("Connection terminated")
+			serverCtx.Timeout = false
+			serverCtx.Socket.SetReadDeadline(time.Time{})
+			receive(serverCtx)
+		}
 		waitForAck(serverCtx)
 	} else if lastPacketSent.Header.Flags.ACK && lastPacketSent.Header.Flags.SYN {
 		fmt.Println("Re-Send -> SYN/ACK with packet: ", packetString(lastPacketSent))
+		serverCtx.EstablishCount++
+		if serverCtx.EstablishCount >= 7 {
+			fmt.Println("Passed SYN/ACK resending limit")
+			fmt.Println("Connection terminated")
+			serverCtx.Timeout = false
+			serverCtx.Socket.SetReadDeadline(time.Time{})
+			receive(serverCtx)
+		}
 		waitForAck(serverCtx)
 	} else {
 		fmt.Println("Re-Send -> ACK with packet: ", packetString(lastPacketSent))
