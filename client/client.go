@@ -75,7 +75,7 @@ func sendFinPacket(clientCtx *ClientCtx) {
 func sendLastPacket(clientCtx *ClientCtx) {
 	lastPacketSent := clientCtx.packetsSent[len(clientCtx.packetsSent)-1]
 
-	sendPacket(clientCtx, lastPacketSent.Header.Flags, lastPacketSent.Data, lastPacketSent.Header.Seq, lastPacketSent.Header.Ack)
+	sendPacket(clientCtx, utils.Flags{SYN: lastPacketSent.Header.Flags.SYN, FIN: lastPacketSent.Header.Flags.FIN, ACK: lastPacketSent.Header.Flags.ACK, PSH: lastPacketSent.Header.Flags.PSH, DUP: true}, lastPacketSent.Data, lastPacketSent.Header.Seq, lastPacketSent.Header.Ack)
 }
 
 func sendPacket(clientCtx *ClientCtx, flags utils.Flags, data string, seq uint32, ack uint32) {

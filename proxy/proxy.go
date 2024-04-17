@@ -8,6 +8,11 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/plotutil"
+	"gonum.org/v1/plot/vg"
 )
 
 type ProxyCtx struct {
@@ -23,8 +28,83 @@ type ProxyCtx struct {
 	ClientDelayMin, ClientDelayMax       int
 	ServerDelayMin, ServerDelayMax       int
 
-	ClientPackets []utils.Packet
-	ServerPackets []utils.Packet
+	ClientPackets []utils.PacketAndTime
+	ServerPackets []utils.PacketAndTime
+	initialPacket bool
+	initialTime   time.Time
+}
+
+func group(packets []utils.PacketAndTime) [][]float64 {
+	packetMap := make(map[float64]int)
+	groups := make([][]float64, 0)
+	for _, packet := range packets {
+		packetMap[packet.Time]++
+	}
+
+	for k, v := range packetMap {
+		groups = append(groups, []float64{k, float64(v)})
+	}
+
+	return groups
+}
+
+func duplicates(packets []utils.PacketAndTime) []utils.PacketAndTime {
+	var dupes []utils.PacketAndTime
+	for _, packet := range packets {
+		if packet.Packet.Header.Flags.DUP {
+			dupes = append(dupes, packet)
+		}
+	}
+
+	return dupes
+}
+
+func generateGraph(proxyCtx *ProxyCtx) {
+	plotPoints := func(points [][]float64) plotter.XYs {
+		pts := make(plotter.XYs, len(points))
+		for i := range pts {
+			pts[i].X = float64(points[i][0])
+			pts[i].Y = float64(points[i][1])
+		}
+
+		return pts
+	}
+
+	var clientRetransmissions [][]float64
+	var serverRetransmissions [][]float64
+
+	for {
+		p := plot.New()
+		p.Title.Text = "Client and Server Retransmissions"
+		p.X.Label.Text = "Time (seconds)"
+		p.Y.Label.Text = "Retransmissions"
+		p.Y.Min = 0
+
+		newPoints := group(duplicates(proxyCtx.ClientPackets))
+		newPointsS := group(duplicates(proxyCtx.ServerPackets))
+		if len(newPoints) == 0 {
+			clientRetransmissions = append(clientRetransmissions, []float64{time.Since(proxyCtx.initialTime).Seconds(), 0})
+		} else {
+			clientRetransmissions = append(clientRetransmissions, newPoints...)
+		}
+
+		if len(newPointsS) == 0 {
+			serverRetransmissions = append(serverRetransmissions, []float64{time.Since(proxyCtx.initialTime).Seconds(), 0})
+		} else {
+			serverRetransmissions = append(serverRetransmissions, newPointsS...)
+		}
+
+		err := plotutil.AddLinePoints(p, "Client", plotPoints(clientRetransmissions), "Server", plotPoints(serverRetransmissions))
+		if err != nil {
+			panic(err)
+		}
+		if err := p.Save(8*vg.Inch, 4*vg.Inch, "retransmissions.png"); err != nil {
+			panic(err)
+		}
+
+		time.Sleep(1 * time.Second)
+	}
+
 }
 
 func packetString(packet utils.Packet) string {
@@ -70,12 +150,9 @@ func receive(proxyCtx *ProxyCtx) {
 
 	packet, _ := utils.DecodePacket(proxyCtx.Data)
 
-	if packet.Header.Flags.FIN && packet.Header.Flags.ACK {
-		utils.GenerateGraph()
-	}
-
 	if sendTo(addr.String(), proxyCtx.ServerAddress.String()) {
-		proxyCtx.ServerPackets = append(proxyCtx.ServerPackets, packet)
+		proxyCtx.ServerPackets = append(proxyCtx.ServerPackets, utils.PacketAndTime{Time: float64(time.Since(proxyCtx.initialTime).Seconds()), Packet: packet})
+
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ServerDropChance {
@@ -97,7 +174,8 @@ func receive(proxyCtx *ProxyCtx) {
 		}
 
 	} else {
-		proxyCtx.ClientPackets = append(proxyCtx.ClientPackets, packet)
+		proxyCtx.ClientPackets = append(proxyCtx.ClientPackets, utils.PacketAndTime{Time: time.Since(proxyCtx.initialTime).Seconds(), Packet: packet})
+
 		dropChance := rand.Intn(100)
 
 		if dropChance < proxyCtx.ClientDropChance {
@@ -313,5 +391,8 @@ func parseArgs(proxyCtx *ProxyCtx) {
 
 func main() {
 	proxyCtx := ProxyCtx{}
+	proxyCtx.initialPacket = true
+	proxyCtx.initialTime = time.Now()
+	go generateGraph(&proxyCtx)
 	parseArgs(&proxyCtx)
 }

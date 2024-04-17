@@ -7,13 +7,12 @@ import (
 )
 
 type Flags struct {
-	SYN, FIN, ACK, PSH, RST, URG, CWD, ECE bool
+	SYN, FIN, ACK, PSH, DUP bool
 }
 
 type Header struct {
 	Flags         Flags
 	Seq, Ack, Len uint32
-	Win           uint16
 }
 
 type Packet struct {
@@ -56,4 +55,25 @@ func Address(ip string, port string) string {
 	}
 
 	return net.JoinHostPort(parsedIp.String(), port)
+}
+
+type PacketAndTime struct {
+	Time   float64
+	Packet Packet
+}
+
+func Duplicates(packets []PacketAndTime) []PacketAndTime {
+	packetMap := make(map[Packet]bool)
+
+	duplicatePacketAndTime := make([]PacketAndTime, 0)
+
+	for _, pkt := range packets {
+		if packetMap[pkt.Packet] {
+			duplicatePacketAndTime = append(duplicatePacketAndTime, pkt)
+		} else {
+			packetMap[pkt.Packet] = true
+		}
+	}
+
+	return duplicatePacketAndTime
 }

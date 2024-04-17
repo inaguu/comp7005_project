@@ -176,6 +176,8 @@ func receive(serverCtx *ServerCtx) {
 func sendLastPacket(serverCtx *ServerCtx) {
 	lastPacketSent := serverCtx.packetsSent[len(serverCtx.packetsSent)-1]
 
+	lastPacketSent.Header.Flags.DUP = true
+
 	bytes, err := utils.EncodePacket(lastPacketSent)
 	if err != nil {
 		fmt.Println(err)
