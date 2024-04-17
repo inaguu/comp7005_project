@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const CLIENT_DELAY_SECONDS int = 10
+const CLIENT_DELAY_SECONDS int = 2
 
 type ClientCtx struct {
 	Socket            *net.UDPConn

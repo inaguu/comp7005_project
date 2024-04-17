@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const SERVER_DELAY_SECONDS int = 5
+const SERVER_DELAY_SECONDS int = 1
 
 type ServerCtx struct {
 	Socket        *net.UDPConn
