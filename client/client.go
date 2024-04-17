@@ -198,6 +198,7 @@ func readFile(clientCtx *ClientCtx) {
 
 	if len(content) == 0 {
 		fmt.Println("File is empty")
+		cleanup(clientCtx)
 	}
 
 	clientCtx.Data = string(content)
