@@ -5,33 +5,35 @@ digraph Server {
   rankdir = "LR";
   
   // States
-  Start [label = "Start";];
-  Parse_Args [label = "Parse Args";];
-  Socket_Binded [label = "Socket Binded";];
-  Receive [label = "Receive";];
-  SYN_ACK_SENT [label = "SYN/ACK Sent";];
-  FIN_ACK_SENT [label = "FIN/ACK Sent";];
-  ACK_SENT [label = "ACK Sent";];
+  START;
+  PARSE_ARGS;
+  SOCKET_BINDED;
+  RECEIVE;
+  SYN_ACK_SENT;
+  WAIT_FOR_CONNECTION_ACK;
+  WAIT_FOR_TEARDOWN_ACK;
+  FIN_ACK_SENT;
+  ACK_SENT;
+  CLEANUP;
+  EXIT;
   
-  Exit [label = "Exit";];
+  // Transitions
+  START -> PARSE_ARGS [label = "parseArgs";];
+  PARSE_ARGS -> SOCKET_BINDED [label = "bindSocket";];
+  SOCKET_BINDED -> RECEIVE [label = "receive";];
+  RECEIVE -> SYN_ACK_SENT [label = "received syn, sendSynAck";];
+  RECEIVE -> FIN_ACK_SENT [label = "received fin, sendFinAck";];
+  RECEIVE -> ACK_SENT [label = "received data, sendAck";];
+  SYN_ACK_SENT -> WAIT_FOR_CONNECTION_ACK [label = "waitForAck";];
+  WAIT_FOR_CONNECTION_ACK -> WAIT_FOR_CONNECTION_ACK [label = "timeout, sendLastPacket";];
+  WAIT_FOR_CONNECTION_ACK -> RECEIVE [label = "received ack, receive";];
+  FIN_ACK_SENT -> WAIT_FOR_TEARDOWN_ACK [label = "waitForAck";];
+  WAIT_FOR_TEARDOWN_ACK -> WAIT_FOR_TEARDOWN_ACK [label = "timeout, sendLastPacket";];
+  WAIT_FOR_TEARDOWN_ACK -> RECEIVE [label = "received ack, receive";];
+  RECEIVE -> CLEANUP [label = "cleanup";];
+  CLEANUP -> EXIT [label = "exit";];
   
-  
-  Start -> Parse_Args [label = "parseArgs()";];
-  Parse_Args -> Socket_Binded [label = "bindSocket()";];
-  Socket_Binded -> Receive [label = "receive()";];
-  
-  Receive -> SYN_ACK_SENT [label = "SYN received | sendSynAck()";];
-  SYN_ACK_SENT -> SYN_ACK_SENT [label = "timeout no ACK | sendSynAck()";];
-  SYN_ACK_SENT -> Receive [label = "ACK received | receive()";];
-  
-  Receive -> FIN_ACK_SENT [label = "FIN received | sendFinAck()";];
-  FIN_ACK_SENT -> FIN_ACK_SENT [label = "timeout no ACK | sendFinAck()";];
-  FIN_ACK_SENT -> Receive [label = "ACK received | receive()";];
-  
-  Receive -> ACK_SENT [label = "Data received | sendAck()";];
-  
-  Socket_Binded -> Cleanup [label = "bindSocket() err | cleanup()";];
-  Receive -> Cleanup [label = "read err | cleanup()";];
-  
-  Cleanup -> Exit [label = "exit()";];
+  PARSE_ARGS -> EXIT [label = "bad input";];
+  SOCKET_BINDED -> EXIT [label = "socker bind error";];
+  RECEIVE -> CLEANUP [label = "read error";];
 }

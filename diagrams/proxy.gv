@@ -1,0 +1,34 @@
+digraph Proxy {
+  node [shape = circle; fontsize = 15; width = 1; height = 1;];
+  edge [fontsize = 15;];
+  
+  // States
+  START;
+  PARSE_ARGS;
+  SOCKET_BINDED;
+  CONNECTED_TO_SERVER;
+  RECEIVE;
+  DELAYED;
+  FORWARD_TO_CLIENT;
+  FORWARD_TO_SERVER;
+  CLEANUP;
+  EXIT;
+  
+  // Transitions
+  START -> SOCKET_BINDED [label = "bindSocket";];
+  SOCKET_BINDED -> CONNECTED_TO_SERVER [label = "connectToServer";];
+  CONNECTED_TO_SERVER -> RECEIVE [label = "receive";];
+  RECEIVE -> RECEIVE [label = "dropPacket";];
+  RECEIVE -> DELAYED [label = "delayPacket";];
+  DELAYED -> FORWARD_TO_CLIENT [label = "sendToClient";];
+  DELAYED -> FORWARD_TO_SERVER [label = "sendToServer";];
+  RECEIVE -> FORWARD_TO_CLIENT [label = "sendToClient";];
+  RECEIVE -> FORWARD_TO_SERVER [label = "sendToServer";];
+  RECEIVE -> CLEANUP [label = "cleanup";];
+  CLEANUP -> EXIT [label = "exit";];
+  
+  PARSE_ARGS -> EXIT [label = "bad input";];
+  SOCKET_BINDED -> EXIT [label = "bind socket error";];
+  CONNECTED_TO_SERVER -> CLEANUP [label = "connect to socket error";];
+  RECEIVE -> CLEANUP [label = "read error";];
+}

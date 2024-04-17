@@ -2,47 +2,57 @@ digraph Client {
   node [shape = circle; fontsize = 15; width = 1; height = 1;];
   edge [fontsize = 15;];
   
-  rankdir = "";
   
   // States
-  Start;
-  Parse_Args;
-  Read_File;
-  Socket_Connected;
-  SYN_Sent;
-  Wait_For_SYN_ACK;
-  Send_Ack;
-  Established;
-  Send;
-  Receive;
-  Retransmit;
-  Next;
-  Packet;
-  Fin_Sent;
-  Wait_For_FIN_ACK;
-  Closed;
-  Cleanup;
-  Exit;
+  START;
+  PARSE_ARGS;
+  READ_FILE;
+  SOCKET_CONNECTED;
+  SYN_SENT;
+  WAIT_FOR_SYN_ACK;
+  WAIT_FOR_SYN_ACK_2;
+  ACK_SENT;
+  ESTABLISHED;
+  SEND;
+  WAIT_FOR_ACK;
+  FIN_SENT;
+  WAIT_FOR_FIN_ACK;
+  WAIT_FOR_FIN_ACK_2;
+  FINAL_ACK;
+  CLOSED;
+  CLEANUP;
+  EXIT;
   
   // Transitions
-  Start -> Parse_Args [label = "parseArgs()";];
-  Parse_Args -> Read_File [label = "readFile()";];
-  Read_File -> Socket_Connected [label = "bindSocket()";];
-  Socket_Connected -> SYN_Sent [label = "sendSyn()";];
+  START -> PARSE_ARGS [label = "parseArgs";];
+  PARSE_ARGS -> READ_FILE [label = "readFile";];
+  READ_FILE -> SOCKET_CONNECTED [label = "bindSocket";];
+  SOCKET_CONNECTED -> SYN_SENT [label = "sendSyn";];
   
-  SYN_Sent -> Wait_For_SYN_ACK;
-  Wait_For_SYN_ACK -> Wait_For_SYN_ACK [label = "timeout no SYN/ACK | sendSyn()";];
-  Wait_For_SYN_ACK -> Send_Ack [label = "sendAck()";];
-  Send_Ack -> Established;
+  SYN_SENT -> WAIT_FOR_SYN_ACK [label = "hasReceivedPacket";];
+  WAIT_FOR_SYN_ACK -> WAIT_FOR_SYN_ACK [label = "timeout, sendSynPacket";];
+  WAIT_FOR_SYN_ACK -> ACK_SENT [label = "sendAckPacket";];
+  ACK_SENT -> WAIT_FOR_SYN_ACK_2 [label = "hasReceivedPacket";];
+  WAIT_FOR_SYN_ACK_2 -> WAIT_FOR_SYN_ACK_2 [label = "received SYN/ACK before timeout, sendlastPacket";];
+  WAIT_FOR_SYN_ACK_2 -> ESTABLISHED [label = "timeout";];
   
-  Established -> Send [label = "send()";];
-  Send -> Receive;
-  Receive -> Retransmit;
-  Receive -> Next [label = "move to next packet";];
-  Retransmit -> Next;
-  Retransmit -> Retransmit [label = "timeout not ACK";];
-  Next -> Send;
+  ESTABLISHED -> SEND [label = "send";];
+  SEND -> WAIT_FOR_ACK [label = "hasReceivedPacket";];
+  WAIT_FOR_ACK -> WAIT_FOR_ACK [label = "sendLastPacket";];
+  WAIT_FOR_ACK -> SEND [label = "received ack";];
   
-  Parse_Args -> Exit [label = "bad input";];
-  Read_File -> Exit [label = "readFile() err";];
+  SEND -> FIN_SENT [label = "sendFinPacket";];
+  FIN_SENT -> WAIT_FOR_FIN_ACK [label = "hasReceievedPacket";];
+  WAIT_FOR_FIN_ACK -> WAIT_FOR_FIN_ACK [label = "timeout sendLastPacket";];
+  WAIT_FOR_FIN_ACK -> FINAL_ACK [label = "sendAckPacket";];
+  FINAL_ACK -> WAIT_FOR_FIN_ACK_2 [label = "received FIN/ACK before timeout, sendLastPacket";];
+  WAIT_FOR_FIN_ACK_2 -> CLOSED [label = "timeout";];
+  
+  CLOSED -> CLEANUP;
+  CLEANUP -> EXIT [label = "cleanup";];
+  
+  PARSE_ARGS -> EXIT [label = "bad input";];
+  READ_FILE -> EXIT [label = "read file error";];
+  SOCKET_CONNECTED -> EXIT [label = "create socket to proxy error";];
+  SEND -> CLEANUP [label = "write error";];
 }
