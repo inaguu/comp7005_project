@@ -52,7 +52,7 @@ digraph Client {
   CLEANUP -> EXIT [label = "cleanup";];
   
   PARSE_ARGS -> EXIT [label = "bad input";];
-  READ_FILE -> EXIT [label = "read file error";];
+  READ_FILE -> CLEANUP [label = "read file error";];
   SOCKET_CONNECTED -> EXIT [label = "create socket to proxy error";];
   SEND -> CLEANUP [label = "write error";];
 }
