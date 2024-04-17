@@ -119,7 +119,7 @@ func receive(serverCtx *ServerCtx) {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 				fmt.Println("Timeout waiting for PSH/ACK")
 				sendLastPacket(serverCtx)
-				receive(serverCtx)
+				// receive(serverCtx)
 			} else {
 				fmt.Println(err)
 				cleanup(serverCtx)
@@ -131,12 +131,26 @@ func receive(serverCtx *ServerCtx) {
 	}
 
 	bytes := buffer[0:n]
+	var packet utils.Packet
 
-	packet, err := utils.DecodePacket(bytes)
+	packet, err = utils.DecodePacket(bytes)
 	if err != nil {
 		fmt.Println(err)
 		cleanup(serverCtx)
 	}
+
+	// if len(bytes) != 0 {
+	// 	packet, err = utils.DecodePacket(bytes)
+	// 	if packet.Header.Flags.ACK && !packet.Header.Flags.PSH && !serverCtx.Timeout {
+	// 		receive(serverCtx)
+	// 	}
+	// 	if err != nil {
+	// 		fmt.Println(err)
+	// 		cleanup(serverCtx)
+	// 	}
+	// } else {
+	// 	receive(serverCtx)
+	// }
 
 	serverCtx.packetsReceived = append(serverCtx.packetsReceived, packet)
 	serverCtx.ClientAddress = addr
@@ -153,6 +167,7 @@ func receive(serverCtx *ServerCtx) {
 		serverCtx.Timeout = true
 		send(serverCtx)
 	}
+	receive(serverCtx)
 }
 
 func sendLastPacket(serverCtx *ServerCtx) {
